@@ -7,6 +7,7 @@
 
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Utils/LogStrategyUI.h"
+#include "Utils/PropertyDebugPaintUtil.h"
 #include "Utils/StrategyUIGameplayTags.h"
 
 UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer)
@@ -84,7 +85,7 @@ void UBaseStrategyWidget::NativeConstruct()
 void UBaseStrategyWidget::NativeDestruct()
 {
 	// Clear pool
-	EntryWidgetPool.ReleaseAll();
+	EntryWidgetPool.ResetPool();
 	IndexToWidgetMap.Empty();
 	Items.Empty();
 
@@ -102,7 +103,7 @@ int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& 
 	int32 MaxLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	if (bEnableDebugDraw && LayoutStrategy)
 	{
-		GetLayoutStrategyChecked().DrawDebugVisuals(AllottedGeometry, OutDrawElements, LayerId, AllottedGeometry.GetAbsolutePosition());
+		FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, AllottedGeometry.GetAbsolutePosition());
 		MaxLayer++;
 	}
 	return MaxLayer;

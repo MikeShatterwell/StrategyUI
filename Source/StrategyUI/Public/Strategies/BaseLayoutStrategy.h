@@ -68,6 +68,8 @@ public:
 	/**
 	 * Draws debug visuals for the layout strategy.
 	 * This is useful for visualizing the layout in the editor or during development.
+	 *
+	 * Called automatically by FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals if using that utility.
 	 */
 	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const {};
 };
