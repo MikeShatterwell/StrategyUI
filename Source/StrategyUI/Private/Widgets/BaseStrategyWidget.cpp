@@ -68,18 +68,6 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 void UBaseStrategyWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
-	if (!ensure(WidgetTree))
-	{
-		return;
-	}
-
-	// If there's no root widget or BindWidget, create a new CanvasPanel for it
-	if (!WidgetTree->RootWidget && !CanvasPanel)
-	{
-		CanvasPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
-		WidgetTree->RootWidget = CanvasPanel;
-	}
 }
 
 void UBaseStrategyWidget::NativeDestruct()
@@ -97,13 +85,32 @@ void UBaseStrategyWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
+TSharedRef<SWidget> UBaseStrategyWidget::RebuildWidget()
+{
+	if (!WidgetTree)
+	{
+		return Super::RebuildWidget();
+	}
+
+	// If there's no root widget or BindWidget, create a new CanvasPanel for it
+	if (!WidgetTree->RootWidget && !CanvasPanel)
+	{
+		CanvasPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
+		WidgetTree->RootWidget = CanvasPanel;
+		Invalidate(EInvalidateWidget::LayoutAndVolatility);
+	}
+	
+	return Super::RebuildWidget();
+}
+
 int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
-	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+									   FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	int32 MaxLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	if (bEnableDebugDraw && LayoutStrategy)
 	{
-		FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, AllottedGeometry.GetAbsolutePosition());
+		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
+		FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, Center);
 		MaxLayer++;
 	}
 	return MaxLayer;

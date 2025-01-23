@@ -31,27 +31,27 @@ struct FRadialScrollAnimationData
 
 public:
 	// Whether the widget is currently animating a scroll
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	bool bIsAnimating = false;
 
 	// How long the current animation will take (in seconds, if bIsAnimating is true).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	float Duration = 0.f;
 
 	// How long the current animation has been running (in seconds, if bIsAnimating is true).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	float ElapsedTime = 0.f;
 	
 	// The "base" angle at animation start (already unwound to [0..360] in wheel mode, or just stored as-is in spiral mode).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	float StartAngle = 0.f;
 
 	// The target angle (StartAngle + DeltaAngle) in degrees
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	float EndAngle = 0.f;
 
 	// The difference in degrees from StartAngle to EndAngle
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
 	float DeltaAngle = 0.f;
 };
 
@@ -91,25 +91,25 @@ public:
 	 * @param Delta     2D directional input.
 	 * @param DeltaTime Frame time, for smooth rotation if desired.
 	 */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void HandleInput(const FVector2D& Delta, float DeltaTime);
 
 	/** Resets the pointer angle, visible window, etc. */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void ResetInput();
 
 	/** Selects the currently-focused item (if any). */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void SelectFocusedItem();
 	
 	/** Adds a rotation delta equal to a single item to the current pointer angle. */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void StepIndex(int32 Delta);
 
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral|Animation")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void StepIndexAnimated(int32 Delta, const float Duration = 0.0f);
 	
-	UFUNCTION(BlueprintCallable, Category = "RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
 	void ScrollToDataIndex(int32 DataIndex);
 
 	/**
@@ -117,21 +117,21 @@ public:
 	 * @param DataIndex  The index in the Items array to scroll to.
 	 * @param Duration   How long (in seconds) to take for the animation. Use 0 for an instant jump.
 	 */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral|Animation")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void ScrollToItemAnimated(int32 DataIndex, float Duration);
 
-	UFUNCTION(BlueprintCallable, Category = "RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
 	void ScrollToAngle(float Angle);
 
 	/** Re-center the pointer on the currently focused item. */
-	UFUNCTION(BlueprintCallable, Category = "RadialSpiral")
+	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
 	void ScrollToCenterOfFocusedWedge();
 
 	/**
 	 * Re-center the pointer on the currently focused item, over some duration.
 	 * @param Duration   Duration (in seconds). 0 = instant.
 	 */
-	UFUNCTION(BlueprintCallable, Category="RadialSpiral|Animation")
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void ScrollToCenterOfFocusedWedgeAnimated(float Duration);
 #pragma endregion Public API
 
@@ -158,56 +158,44 @@ protected:
 
 #pragma region Events
 	/** Broadcasts when an item is focused (hovered) by the pointer. */
-	UPROPERTY(BlueprintAssignable, Category="RadialSpiral|Event")
+	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
 	FRadialItemFocusedDelegate OnItemFocused;
 
 	/** Broadcasts the current pointer angle when it changes (in degrees [-180..180]). */
-	UPROPERTY(BlueprintAssignable, Category="RadialSpiral|Event")
+	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
 	FRadialPointerRotationUpdatedDelegate OnPointerRotationUpdated;
 
 	/** Broadcasts when the focused item is selected via SelectFocusedItem(). */
-	UPROPERTY(BlueprintAssignable, Category="RadialSpiral|Event")
+	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
 	FRadialItemClickedDelegate OnItemSelected;
 #pragma endregion Events
 
 
 #pragma region Protected Properties
 	/** Sensitivity for input rotation (higher = faster scrolling). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialSpiral|Input")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategyWidget")
 	float RotationSensitivity = 100.f;
-
-	/** If true, we debug-draw pointer lines, circles, angles, etc. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialSpiral|Debug")
-	bool bShowDebugPaint = false;
-
-	/** If true, preview entries of the assigned EntryWidgetClass will be shown. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialSpiral|Debug", meta=(EditCondition="bShowDebugPaint"))
-	bool bShowDebugItems = false;
-
-	/** Number of debug items to show (if bShowDebugItems is true). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialSpiral|Debug", meta=(EditCondition="bShowDebugItems"))
-	int32 DebugItemCount = 50;
 	
 	/**
 	 * Current pointer angle in degrees; can exceed 360 or be negative.
 	 * Used to figure out which item is "closest" in angle, or how many turns we've scrolled.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category="RadialSpiral|Pointer", meta=(AllowPrivateAccess="true"))
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
 	float CurrentPointerAngle = 0.f;
 	void SetCurrentAngle(const float InNewAngle);
 	
 	/** Currently-focused item index (in the entire data Items array). INDEX_NONE (-1) if invalid. */
-	UPROPERTY(BlueprintReadOnly, Category="RadialSpiral|Pointer", meta=(AllowPrivateAccess="true"))
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
 	int32 DataFocusedIndex = INDEX_NONE;
 	void SetFocusedIndex(const int32 InFocusedIndex);
 	
 	/** Used when in spiral mode to store the item index without being constrained by data indexes. Can be negative or exceed the number of Items */
-	UPROPERTY(BlueprintReadOnly, Category="RadialSpiral|Pointer", meta=(AllowPrivateAccess="true"))
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
 	int32 GlobalFocusIndex = INDEX_NONE;
 
 	/** Stores all scroll animation parameters. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialSpiral|Animation", meta=(AllowPrivateAccess="true"))
-	FRadialScrollAnimationData ScrollAnimState;
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Animation", meta=(AllowPrivateAccess="true"))
+	FRadialScrollAnimationData RuntimeScrollingAnimState;
 #pragma endregion Protected Properties
 
 	
@@ -248,7 +236,6 @@ protected:
 	
 private:
 #pragma region Private Data Members
-	
 	/** Cached geometry size for consistent layout math. */
 	mutable FVector2D CachedSize = FVector2D::ZeroVector;
 	mutable FVector2D Center = FVector2D::ZeroVector;

@@ -11,7 +11,6 @@
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Strategies/BaseLayoutStrategy.h"
 #include "Utils/LogStrategyUI.h"
-#include "Utils/PropertyDebugPaintUtil.h"
 #include "Strategies/RadialLayoutStrategy.h"
 #include "Utils/StrategyUIGameplayTags.h"
 
@@ -63,9 +62,9 @@ void URadialStrategyWidget::HandleInput(const FVector2D& Delta, const float Delt
 		return; // No movement, skip
 	}
 
-	if (ScrollAnimState.bIsAnimating)
+	if (RuntimeScrollingAnimState.bIsAnimating)
 	{
-		ScrollAnimState.bIsAnimating = false; // Override any ongoing animations
+		RuntimeScrollingAnimState.bIsAnimating = false; // Override any ongoing animations
 	}
 
 	// Normalize the input delta to avoid device sensitivity issues
@@ -188,7 +187,7 @@ void URadialStrategyWidget::ResetInput()
 {
 	// @TODO: Consider a better cleanup and init flow in case new data comes in at runtime and we need to reset the layout
 
-	ScrollAnimState.bIsAnimating = false;
+	RuntimeScrollingAnimState.bIsAnimating = false;
 	SetCurrentAngle(0.0f);
 	SetFocusedIndex(INDEX_NONE);
 	
@@ -288,22 +287,22 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	// If we have an animation in progress, advance it
-	if (ScrollAnimState.bIsAnimating)
+	if (RuntimeScrollingAnimState.bIsAnimating)
 	{
-		ScrollAnimState.ElapsedTime += InDeltaTime;
-		float Alpha = (ScrollAnimState.Duration > 0.f)
-			? (ScrollAnimState.ElapsedTime / ScrollAnimState.Duration)
+		RuntimeScrollingAnimState.ElapsedTime += InDeltaTime;
+		float Alpha = (RuntimeScrollingAnimState.Duration > 0.f)
+			? (RuntimeScrollingAnimState.ElapsedTime / RuntimeScrollingAnimState.Duration)
 			: 1.f;
 		
 		if (Alpha >= 1.f)
 		{
 			// Finished
 			Alpha = 1.f;
-			ScrollAnimState.bIsAnimating = false;
+			RuntimeScrollingAnimState.bIsAnimating = false;
 		}
 
 		// We can swap to e.g. InterpEaseInOut or InterpSinInOut easily.
-		const float AnimAngle = FMath::Lerp(ScrollAnimState.StartAngle, ScrollAnimState.EndAngle, Alpha);
+		const float AnimAngle = FMath::Lerp(RuntimeScrollingAnimState.StartAngle, RuntimeScrollingAnimState.EndAngle, Alpha);
 		SetCurrentAngle(AnimAngle);
 	}
 
@@ -349,12 +348,11 @@ int32 URadialStrategyWidget::NativePaint(
 		Center     = CachedSize * 0.5f;
 	}
 
-	if (!bShowDebugPaint || !LayoutStrategy)
+	if (!bEnableDebugDraw || !LayoutStrategy)
 	{
 		return MaxLayer;
 	}
 	
-	FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, Center);
 	DrawItemDebugInfo(AllottedGeometry, OutDrawElements, LayerId);
 	
 	return MaxLayer;
@@ -494,17 +492,17 @@ void URadialStrategyWidget::BeginAngleAnimation(const float InTargetAngle, const
 	if (Duration <= 0.f)
 	{
 		// Instant
-		ScrollAnimState.bIsAnimating = false;
+		RuntimeScrollingAnimState.bIsAnimating = false;
 		SetCurrentAngle(InTargetAngle);
 	}
 	else
 	{
-		ScrollAnimState.bIsAnimating = true;
-		ScrollAnimState.Duration     = Duration;
-		ScrollAnimState.ElapsedTime  = 0.f;
-		ScrollAnimState.StartAngle   = CurrentPointerAngle;
-		ScrollAnimState.EndAngle     = InTargetAngle;
-		ScrollAnimState.DeltaAngle   = (InTargetAngle - CurrentPointerAngle);
+		RuntimeScrollingAnimState.bIsAnimating = true;
+		RuntimeScrollingAnimState.Duration     = Duration;
+		RuntimeScrollingAnimState.ElapsedTime  = 0.f;
+		RuntimeScrollingAnimState.StartAngle   = CurrentPointerAngle;
+		RuntimeScrollingAnimState.EndAngle     = InTargetAngle;
+		RuntimeScrollingAnimState.DeltaAngle   = (InTargetAngle - CurrentPointerAngle);
 	}
 }
 
@@ -514,22 +512,18 @@ void URadialStrategyWidget::ArrangeItems()
 
 	if (Items.Num() == 0)
 	{
-		if (bShowDebugItems)
+		// Create debug data
+		TArray<UObject*> DebugItems;
+		for (int32 i = 0; i < DebugItemCount ; ++i)
 		{
-			// Create debug data
-			TArray<UObject*> DebugItems;
-			for (int32 i = 0; i < DebugItemCount ; ++i)
-			{
-				UDebugRadialItem* DebugItem = NewObject<UDebugRadialItem>(this);
-				DebugItem->DebugLabel = FString::Printf(TEXT("Item %d"), i);
-				DebugItem->Id = i;
-				DebugItems.Add(DebugItem);
-			}
-
-			// Use the debug data
-			SetItems(DebugItems);
+			UDebugRadialItem* DebugItem = NewObject<UDebugRadialItem>(this);
+			DebugItem->DebugLabel = FString::Printf(TEXT("Item %d"), i);
+			DebugItem->Id = i;
+			DebugItems.Add(DebugItem);
 		}
 
+		// Use the debug data
+		SetItems(DebugItems);
 		SetFocusedIndex(INDEX_NONE);
 		return;
 	}

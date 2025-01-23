@@ -10,21 +10,6 @@ class UBaseLayoutStrategy;
 class UUserWidget;
 class UCanvasPanel;
 
-// Enum to specify the runtime state of a strategy item entry.
-// @TODO: Extend to support more states
-UENUM(BlueprintType)
-enum class EStrategyEntryState : uint8
-{
-	/** Not in the CanvasPanel or any parent; no visuals at all. */
-	Pooled,
-
-	/** In the CanvasPanel but hidden. */
-	Deactivated,
-
-	/** Fully visible. */
-	Active,
-};
-
 /**
  * A generic container widget that supports a "layout strategy" object.
  * Can be used for radials layouts, floating markers, or any arbitrary layout that the strategy computes.
@@ -92,6 +77,7 @@ protected:
 #pragma region UWidget Overrides
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 #pragma endregion UWidget Overrides
 
@@ -176,7 +162,11 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category="StrategyUI|BaseStrategyWidget")
 	TObjectPtr<UCanvasPanel> CanvasPanel = nullptr;
 
-	// Debug flags, toggles, etc.
+	/** If true, we debug-draw pointer lines, circles, angles, etc. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
 	bool bEnableDebugDraw = false;
+
+	/** Number of debug items to show if no other data is supplied via SetItems(). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(ClampMin="0"))
+	int32 DebugItemCount = 0;
 };
