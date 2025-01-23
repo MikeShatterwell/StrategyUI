@@ -13,6 +13,7 @@
 #include "Utils/LogStrategyUI.h"
 #include "Utils/PropertyDebugPaintUtil.h"
 #include "Strategies/RadialLayoutStrategy.h"
+#include "Utils/StrategyUIGameplayTags.h"
 
 URadialStrategyWidget::URadialStrategyWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -565,15 +566,16 @@ void URadialStrategyWidget::SyncMaterialData() const
 		const int32 GlobalIndex = *GlobalIndexKey;
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
 		const bool bIsFocused = DataIndex == DataFocusedIndex;
-		const EStrategyEntryState ItemState = IndexToStateMap.FindChecked(GlobalIndex);
+		const FGameplayTag& ItemState = IndexToStateMap.FindChecked(GlobalIndex);
 
 		if (Widget->Implements<URadialItemEntry>())
 		{
-			if (ItemState == EStrategyEntryState::Active)
+			const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI_EntryState_Active;
+			if (ItemState == ActiveState)
 			{
 				FRadialItemMaterialData MaterialData;
 				ConstructMaterialData(Widget, GlobalIndex, bIsFocused, MaterialData);
-				IRadialItemEntry::Execute_SetRadialItemMaterialData(Widget, MaterialData);
+				IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
 			}
 		}
 	}
@@ -621,18 +623,18 @@ void URadialStrategyWidget::UpdateVisibleWidgets()
 		const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
 
 		// Grab old & new states
-		const EStrategyEntryState OldState = IndexToStateMap.FindRef(GlobalIndex);
-		const EStrategyEntryState NewState = bShouldBeVisible ? EStrategyEntryState::Active : EStrategyEntryState::Deactivated;
+		const FGameplayTag& OldState = IndexToStateMap.FindRef(GlobalIndex);
+		const FGameplayTag& NewState = bShouldBeVisible ?	StrategyUIGameplayTags::StrategyUI_EntryState_Active : StrategyUIGameplayTags::StrategyUI_EntryState_Deactivated;
 
 		// Check for transitions
 		if (NewState != OldState)
 		{
 			IndexToStateMap[GlobalIndex] = NewState;
 
-			// Tell the widget it changed states
+			// Tell the entry widget it changed states
 			if (Widget->Implements<UStrategyEntryBase>())
 			{
-				IStrategyEntryBase::Execute_OnEntryStateChanged(Widget, OldState, NewState);
+				IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(Widget, OldState, NewState);
 			}
 		}
 	}
@@ -676,10 +678,12 @@ void URadialStrategyWidget::UpdateEntryWidget(UUserWidget* Widget, const int32 I
 		FRadialItemSlotData ItemData;
 		ItemData.Angle = AngleIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
 		ItemData.DataIndex = DataIndex;
-		ItemData.Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 		
-		IRadialItemEntry::Execute_SetRadialItemData(Widget, ItemData);
-		IRadialItemEntry::Execute_SetRadialItemFocused(Widget, bIsFocused);
+		IRadialItemEntry::Execute_BP_SetRadialItemSlotData(Widget, ItemData);
+
+		// @TODO: Only call this if the focused index has changed, skip if the focus is the same
+		IRadialItemEntry::Execute_BP_OnItemFocusChanged(Widget, bIsFocused);
+		
 	}
 }
 

@@ -149,16 +149,10 @@ void URadialLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, 
 		for (int32 i = 0; i < RadialSegmentCount; ++i)
 		{
 			const float StartAngleRad = FMath::DegreesToRadians((i * SegmentAngle) - AngleOffset);
-			const float EndAngleRad = FMath::DegreesToRadians(((i + 1) * SegmentAngle) - AngleOffset);
 
 			FVector2D StartPoint = Center + FVector2D(
 				BaseRadius * FMath::Cos(StartAngleRad),
 				BaseRadius * FMath::Sin(StartAngleRad)
-			);
-
-			FVector2D EndPoint = Center + FVector2D(
-				BaseRadius * FMath::Cos(EndAngleRad),
-				BaseRadius * FMath::Sin(EndAngleRad)
 			);
 
 			const TArray<FVector2f> WedgePoints = {

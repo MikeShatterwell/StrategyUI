@@ -38,7 +38,8 @@ public class StrategyUI : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"UMG"
+				"UMG",
+				"GameplayTags"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

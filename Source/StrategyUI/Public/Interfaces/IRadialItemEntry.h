@@ -2,6 +2,7 @@
 #pragma once
 
 #include "IStrategyEntryBase.h"
+#include "IStrategyInteractiveEntry.h"
 #include "UObject/Interface.h"
 #include "IRadialItemEntry.generated.h"
 
@@ -17,9 +18,6 @@ struct FRadialItemSlotData
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialItemSlotData")
 	int32 DataIndex = INDEX_NONE;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialItemSlotData")
-	TObjectPtr<UObject> Item = nullptr;
 };
 
 /**
@@ -63,55 +61,19 @@ public:
 };
 
 UINTERFACE(BlueprintType)
-class STRATEGYUI_API URadialItemEntry : public UStrategyEntryBase
+class STRATEGYUI_API URadialItemEntry : public UStrategyInteractiveEntry
 {
 	GENERATED_BODY()
 };
 
-class IRadialItemEntry
+class IRadialItemEntry : public IStrategyInteractiveEntry
 {
-	GENERATED_BODY()
-
+	GENERATED_IINTERFACE_BODY()
 public:
-	/** Called when the widget is assigned new data */
-	UFUNCTION(BlueprintNativeEvent, Category="RadialItemEntry")
-	void SetRadialItemData(const FRadialItemSlotData& InData);
-
-	/** Called when focus state changes */
-	UFUNCTION(BlueprintNativeEvent, Category="RadialItemEntry")
-	void SetRadialItemFocused(bool bIsFocused);
-
-	/** Called when distance from pointer changes (0 (far) ... 0.5 (at pointer) .... 1 (near)) */
-	UFUNCTION(BlueprintNativeEvent, Category="RadialItemEntry")
-	void SetRadialItemDistanceFactor(float DistanceFactor);
-
-	/** Called when this widget is created to set a reference to the owning spiral widget.
-	 *
-	 * Useful for widgets that need to interact with the spiral widget (e.g. to request layout data).
-	 */
-	UFUNCTION(BlueprintNativeEvent, Category="RadialItemEntry")
-	void SetRadialSpiralWidgetReference(const URadialStrategyWidget* InRadialSpiralWidget);
-
 	/** Called when the widget is assigned new material data */
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category="RadialItemEntry")
-	void SetRadialItemMaterialData(const FRadialItemMaterialData& InMaterialData);
-
-	/*/** Called when this entry widget transitions from Hidden to Visible. #1#
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="RadialSpiral|Entry")
-	void OnRadialItemStateChanged(const EStrategyEntryState OldState, const EStrategyEntryState NewState);
-	*/
-
-	/**
-	 * Called by the RadialSpiralWidget when it wants to play an intro animation
-	 * (Activating). Return nullptr if no intro animation is used.
-	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="RadialSpiral|Entry")
-	UWidgetAnimation* GetIntroAnimation();
-
-	/**
-	 * Called by the RadialSpiralWidget when it wants to play an outro animation
-	 * (Deactivating). Return nullptr if no outro animation is used.
-	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="RadialSpiral|Entry")
-	UWidgetAnimation* GetOutroAnimation();
+	UFUNCTION(BlueprintImplementableEvent, Category="IRadialItemEntry")
+	void BP_SetRadialItemMaterialData(const FRadialItemMaterialData& InMaterialData);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="IRadialItemEntry")
+	void BP_SetRadialItemSlotData(const FRadialItemSlotData& InSlotData);
 };

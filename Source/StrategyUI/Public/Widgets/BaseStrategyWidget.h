@@ -2,6 +2,7 @@
 
 #include <CoreMinimal.h>
 #include <Blueprint/UserWidgetPool.h>
+#include <GameplayTagContainer.h>
 
 #include "BaseStrategyWidget.generated.h"
 
@@ -145,7 +146,7 @@ protected:
 	 * This is used to track whether an item is pooled, deactivated, or active.
 	 */
 	UPROPERTY(Transient)
-	TMap<int32, EStrategyEntryState> IndexToStateMap;
+	TMap<int32, FGameplayTag> IndexToStateMap;
 
 	/**
 	 * Strategy object used for laying out items in a radial pattern.

@@ -7,6 +7,7 @@
 
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Utils/LogStrategyUI.h"
+#include "Utils/StrategyUIGameplayTags.h"
 
 UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer),
@@ -142,8 +143,6 @@ void UBaseStrategyWidget::UpdateLayout()
 	}
 
 	// 1) Use the strategy to compute layout info (positions, visible indices, etc.)
-	//    Here, we assume we have a “ComputeLayout” method that returns a simple
-	//    list of indices or transforms. Or you might do the “Radial” approach directly.
 
 	TArray<int32> IndicesToShow;
 	GetLayoutStrategyChecked().ComputeLayout(Items.Num(), IndicesToShow);
@@ -172,6 +171,7 @@ void UBaseStrategyWidget::UpdateLayout()
 		{
 			// Center pivot usage, etc. is your choice
 			CanvasSlot->SetPosition(Position);
+			// Optionally keep the widget centered and change the render transform if cursor hit testing is not needed
 		}
 	}
 }
@@ -206,12 +206,13 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 Index)
 	// If the index isn’t in IndexStateMap yet, give it an initial state:
 	if (!IndexToStateMap.Contains(Index))
 	{
-		IndexToStateMap.Add(Index, EStrategyEntryState::Pooled);
-	}
-	
-	if (NewWidget->Implements<UStrategyEntryBase>())
-	{
-		// Init
+		const FGameplayTag& InitialEntryState = StrategyUIGameplayTags::StrategyUI_EntryState_Pooled;
+		IndexToStateMap.Add(Index, InitialEntryState);
+
+		if (NewWidget->Implements<UStrategyEntryBase>())
+		{
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(NewWidget, FGameplayTag::EmptyTag, InitialEntryState);
+		}
 	}
 
 	return NewWidget;
@@ -234,8 +235,10 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 Index)
 				
 				if (Widget->Implements<UStrategyEntryBase>() && IndexToStateMap.Contains(Index))
 				{
+					const FGameplayTag& OldState = IndexToStateMap[Index];
+					const FGameplayTag& NewState = StrategyUIGameplayTags::StrategyUI_EntryState_Pooled;
 					// Tell the widget it's being pooled
-					IStrategyEntryBase::Execute_OnEntryStateChanged(Widget, IndexToStateMap[Index], EStrategyEntryState::Pooled);
+					IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(Widget, OldState, NewState);
 				}
 			}
 		}
@@ -259,7 +262,10 @@ void UBaseStrategyWidget::ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndi
 	}
 }
 
-void UBaseStrategyWidget::UpdateEntryWidget(UUserWidget* EntryWidget, int32 Index)
+void UBaseStrategyWidget::UpdateEntryWidget(UUserWidget* EntryWidget, const int32 Index)
 {
-	// Subclasses or specialized logic can override and update the widget via interface calls, etc.
+	if (EntryWidget->Implements<UStrategyEntryBase>())
+	{
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(EntryWidget, Items[Index]);
+	}
 }
