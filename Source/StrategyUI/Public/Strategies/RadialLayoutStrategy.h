@@ -143,7 +143,7 @@ public:
 	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const PURE_VIRTUAL(URadialLayoutStrategy::CalculateDistanceFactorForGlobalIndex, return 0.f;);
 
 	/**
-	 * This is used to determine the layout wedge angle for the item.
+	 * This is used to determine the layout's radial wedge angle for the item.
 	 */
 	virtual float CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const;
 

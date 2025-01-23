@@ -79,9 +79,8 @@ public:
 	// BaseStrategyWidget API Overrides
 	// ---------------------------------------------------------------------------------------------
 	virtual void SetItems(const TArray<UObject*>& InItems) override;
-	virtual void UpdateLayout() override;
-	virtual UUserWidget* AcquireEntryWidget(int32 Index) override;
-	virtual void UpdateEntryWidget(UUserWidget* Widget, int32 InGlobalIndex) override;
+	virtual void UpdateEntryWidget(int32 InGlobalIndex) override;
+	virtual void PositionWidget(int32 GlobalIndex) override;
 	
 	// ---------------------------------------------------------------------------------------------
 	// RadialSpiralWidget API
@@ -97,6 +96,7 @@ public:
 	/** Resets the pointer angle, visible window, etc. */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void ResetInput();
+	void UpdateFocusIndex();
 
 	/** Selects the currently-focused item (if any). */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
@@ -216,11 +216,8 @@ protected:
 	/***********************************************************************************************
 	 * Item/Widget Handling
 	 ***********************************************************************************************/
-	/** Computes which items to display, focusing, etc. */
-	void ArrangeItems();
-	
 	/** Ensure that only the items in [VisibleStartIndex..] are displayed, reusing or releasing widgets as needed. */
-	void UpdateVisibleWidgets();
+	//void UpdateVisibleWidgets();
 
 	/** Computes data for the entry widget to pass to a dynamic material.
 	 *

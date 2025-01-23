@@ -8,18 +8,6 @@
 
 enum class EStrategyEntryState : uint8;
 
-USTRUCT(BlueprintType)
-struct FRadialItemSlotData
-{
-	GENERATED_BODY()
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialItemSlotData")
-	float Angle = 0.0f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialItemSlotData")
-	int32 DataIndex = INDEX_NONE;
-};
-
 /**
  * All floats are in [0..1] ready for use in a dynamic material.
  *
@@ -73,7 +61,4 @@ public:
 	/** Called when the widget is assigned new material data */
 	UFUNCTION(BlueprintImplementableEvent, Category="IRadialItemEntry")
 	void BP_SetRadialItemMaterialData(const FRadialItemMaterialData& InMaterialData);
-	
-	UFUNCTION(BlueprintImplementableEvent, Category="IRadialItemEntry")
-	void BP_SetRadialItemSlotData(const FRadialItemSlotData& InSlotData);
 };

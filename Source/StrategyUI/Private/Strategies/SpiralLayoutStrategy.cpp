@@ -56,6 +56,7 @@ FVector2D USpiralLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const
 
 	const float PosX = FinalRadius * FMath::Cos(ItemAngleRad);
 	const float PosY = FinalRadius * FMath::Sin(ItemAngleRad);
+	// @TODO: Implement Clockwise option here 
 	return FVector2D(PosX, PosY);
 }
 
@@ -121,6 +122,12 @@ int32 USpiralLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) con
 
 	// If inside the real portion, return it; otherwise it’s in the gap
 	return (WrappedIndex < NumItems) ? WrappedIndex : INDEX_NONE;
+}
+
+float USpiralLayoutStrategy::CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const
+{
+	// @TODO: Implement Clockwise option here 
+	return Super::CalculateItemAngleDegreesForGlobalIndex(GlobalIndex);
 }
 
 float USpiralLayoutStrategy::CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const
@@ -217,6 +224,42 @@ void USpiralLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, 
 		 FLinearColor(/*Magenta*/0.75f, 0.25f, 0.75f, 1.f),
 		 true,
 		 1.f
+		);
+	}
+
+	// 3) Draw a *continuous spiral path* around the pointer in yellow,
+	//    by sampling "global indexes" around the pointer's focus index.
+	{
+		// How big a chunk of the spiral do we draw on each side of the pointer?
+		// Increase if you want a longer visual spiral.
+		constexpr int32 RangeAroundFocus = 50;
+
+		// Find whichever global index is "focused" by the pointer right now:
+		const int32 CenterGlobalIndex = FindFocusedGlobalIndexByAngle();
+
+		// Build a polyline from [CenterIndex - Range .. CenterIndex + Range].
+		TArray<FVector2D> SpiralPoints;
+		SpiralPoints.Reserve(RangeAroundFocus * 2 + 1);
+
+		for (int32 i = CenterGlobalIndex - RangeAroundFocus; i <= CenterGlobalIndex + RangeAroundFocus; ++i)
+		{
+			// Get the *local position* of item i (0,0 is the center).
+			FVector2D LocalPos = GetItemPosition(i);
+
+			// Shift by the actual widget center to make it screen-space
+			SpiralPoints.Add(Center + LocalPos);
+		}
+
+		// Finally, issue the draw call. We get a single continuous line.
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			SpiralPoints,
+			ESlateDrawEffect::None,
+			FLinearColor::Yellow,
+			true,
+			2.f
 		);
 	}
 }

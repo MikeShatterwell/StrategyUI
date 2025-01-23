@@ -64,18 +64,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
 	virtual void SetItems(const TArray<UObject*>& InItems);
-
-	/**
-	 * Builds or updates the visual arrangement of items
-	 * by consulting the strategy.
-	 */
-	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
-	virtual void UpdateLayout();
 #pragma endregion Public API
 
 protected:
 #pragma region UWidget Overrides
 	virtual void NativeConstruct() override;
+	void Reset();
 	virtual void NativeDestruct() override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
@@ -98,7 +92,7 @@ protected:
 	// Entry Widgets Pool & Handling
 	// ---------------------------------------------------------------------------------------------
 	/** Create or retrieve from a pooled widget to display a given item index. */
-	virtual UUserWidget* AcquireEntryWidget(int32 Index);
+	virtual UUserWidget* AcquireEntryWidget(int32 GlobalIndex);
 
 	/** Release an entry widget back to the pool if no longer needed. */
 	virtual void ReleaseEntryWidget(int32 Index);
@@ -106,7 +100,13 @@ protected:
 	virtual void ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndices);
 
 	/** Called when building or updating the entry widget for item at 'Index'. */
-	virtual void UpdateEntryWidget(UUserWidget* EntryWidget, int32 Index);
+	virtual void UpdateEntryWidget(int32 InGlobalIndex);
+	virtual void NotifyStrategyEntryStateChange(int32 GlobalIndex, UUserWidget* Widget, const FGameplayTag& OldState, const FGameplayTag& NewState);
+	virtual void TryHandlePooledEntryStateTransition(int32 GlobalIndex);
+
+	virtual void UpdateVisibleWidgets();
+
+	virtual void PositionWidget(int32 GlobalIndex);
 
 
 	// ---------------------------------------------------------------------------------------------

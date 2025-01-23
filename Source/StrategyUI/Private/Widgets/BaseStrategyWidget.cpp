@@ -5,6 +5,7 @@
 #include <Blueprint/WidgetTree.h>
 #include <Editor/WidgetCompilerLog.h>
 
+#include "DebugRadialItem.h"
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Utils/LogStrategyUI.h"
 #include "Utils/PropertyDebugPaintUtil.h"
@@ -63,6 +64,9 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
 		}
 	}
+
+	Reset();
+	UpdateVisibleWidgets();
 }
 
 void UBaseStrategyWidget::NativeConstruct()
@@ -70,7 +74,7 @@ void UBaseStrategyWidget::NativeConstruct()
 	Super::NativeConstruct();
 }
 
-void UBaseStrategyWidget::NativeDestruct()
+void UBaseStrategyWidget::Reset()
 {
 	// Clear pool
 	EntryWidgetPool.ResetPool();
@@ -81,6 +85,11 @@ void UBaseStrategyWidget::NativeDestruct()
 	{
 		CanvasPanel->ClearChildren();
 	}
+}
+
+void UBaseStrategyWidget::NativeDestruct()
+{
+	Reset();
 
 	Super::NativeDestruct();
 }
@@ -127,6 +136,7 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 	if (LayoutStrategy)
 	{
 		LayoutStrategy->InitializeStrategy(this);
+
 		TArray<FText> ErrorText;
 		LayoutStrategy->ValidateStrategy(ErrorText);
 		for (const FText& Text : ErrorText)
@@ -134,66 +144,27 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
 		}
 	}
-	UpdateLayout();
+	UpdateVisibleWidgets();
 }
 
 void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
 {
 	Items = InItems;
-	UpdateLayout();
+
+	GetLayoutStrategyChecked().InitializeStrategy(this);
+	UpdateVisibleWidgets();
 }
 
-void UBaseStrategyWidget::UpdateLayout()
-{
-	if (!CanvasPanel)
-	{
-		return;
-	}
-
-	// 1) Use the strategy to compute layout info (positions, visible indices, etc.)
-
-	TArray<int32> IndicesToShow;
-	GetLayoutStrategyChecked().ComputeLayout(Items.Num(), IndicesToShow);
-
-	// 2) Release any widgets not in IndicesToShow
-	TArray<int32> CurrentKeys;
-	IndexToWidgetMap.GetKeys(CurrentKeys);
-	for (int32 OldIndex : CurrentKeys)
-	{
-		if (!IndicesToShow.Contains(OldIndex))
-		{
-			ReleaseEntryWidget(OldIndex);
-		}
-	}
-
-	// 3) Acquire or update widgets for each index
-	for (const int32 Index : IndicesToShow)
-	{
-		UUserWidget* EntryWidget = AcquireEntryWidget(Index);
-		UpdateEntryWidget(EntryWidget, Index);
-
-		// Set position, z‐order, etc. from the strategy’s computed transform
-		// Example:
-		const FVector2D Position = GetLayoutStrategyChecked().GetItemPosition(Index);
-		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(EntryWidget->Slot))
-		{
-			// Center pivot usage, etc. is your choice
-			CanvasSlot->SetPosition(Position);
-			// Optionally keep the widget centered and change the render transform if cursor hit testing is not needed
-		}
-	}
-}
-
-UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 Index)
+UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	// If we already have a widget for this index, return it
-	if (const TWeakObjectPtr<UUserWidget>* ExistingPtr = IndexToWidgetMap.Find(Index))
+	if (const TWeakObjectPtr<UUserWidget>* ExistingPtr = IndexToWidgetMap.Find(GlobalIndex))
 	{
 		if (ExistingPtr->IsValid())
 		{
-			UE_LOG(LogStrategyUI, Verbose, TEXT("Reusing widget %s for index %d"), *ExistingPtr->Get()->GetName(), Index);
+			UE_LOG(LogStrategyUI, Verbose, TEXT("Reusing widget %s for global index %d"), *ExistingPtr->Get()->GetName(), GlobalIndex);
 			return ExistingPtr->Get();
 		}
 		// else fall through and create a new one
@@ -209,17 +180,29 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 Index)
 	UUserWidget* NewWidget = EntryWidgetPool.GetOrCreateInstance(EntryWidgetClass);
 	check(NewWidget);
 
-	IndexToWidgetMap.Add(Index, NewWidget);
+	UE_LOG(LogStrategyUI, Verbose, TEXT("Creating new widget %s for global index %d"), *NewWidget->GetName(), GlobalIndex);
+	IndexToWidgetMap.Add(GlobalIndex, NewWidget);
 
 	// If the index isn’t in IndexStateMap yet, give it an initial state:
-	if (!IndexToStateMap.Contains(Index))
+	if (!IndexToStateMap.Contains(GlobalIndex))
 	{
 		const FGameplayTag& InitialEntryState = StrategyUIGameplayTags::StrategyUI_EntryState_Pooled;
-		IndexToStateMap.Add(Index, InitialEntryState);
+		IndexToStateMap.Add(GlobalIndex, InitialEntryState);
 
 		if (NewWidget->Implements<UStrategyEntryBase>())
 		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(NewWidget, FGameplayTag::EmptyTag, InitialEntryState);
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(NewWidget, FGameplayTag(), InitialEntryState);
+		}
+	}
+
+	// Assign the data to the widget
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
+	if (Items.IsValidIndex(DataIndex))
+	{
+		const UObject* Item = Items[DataIndex];
+		if (NewWidget->Implements<UStrategyEntryBase>())
+		{
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Item);
 		}
 	}
 
@@ -270,10 +253,133 @@ void UBaseStrategyWidget::ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndi
 	}
 }
 
-void UBaseStrategyWidget::UpdateEntryWidget(UUserWidget* EntryWidget, const int32 Index)
+void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 {
-	if (EntryWidget->Implements<UStrategyEntryBase>())
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	UE_LOG(LogStrategyUI, Verbose, TEXT("\nStarting UpdateEntryWidget for index %d,"), InGlobalIndex);
+	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
+
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
+
+	const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+
+	if (Widget->Implements<UStrategyEntryBase>())
 	{
-		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(EntryWidget, Items[Index]);
+		// @TODO: Only call this if the item index has changed for this entry
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(Widget, Item);
 	}
+}
+
+void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex, UUserWidget* Widget, const FGameplayTag& OldState, const FGameplayTag& NewState)
+{
+	// Check for transitions and update the state if there was a change
+	if (NewState != OldState)
+	{
+		IndexToStateMap[GlobalIndex] = NewState;
+
+		// Tell the entry widget it changed states
+		if (Widget->Implements<UStrategyEntryBase>())
+		{
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(Widget, OldState, NewState);
+		}
+	}
+}
+
+void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 GlobalIndex)
+{
+	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
+	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
+
+	// Grab old & new states
+	const FGameplayTag& OldState = IndexToStateMap.FindRef(GlobalIndex);
+	ensureMsgf(OldState.IsValid(), TEXT("Invalid state for index %d, make sure we always have a valid state tag!"), GlobalIndex);
+	
+	const FGameplayTag& NewState = bShouldBeVisible ?	StrategyUIGameplayTags::StrategyUI_EntryState_Active : StrategyUIGameplayTags::StrategyUI_EntryState_Deactivated;
+
+	NotifyStrategyEntryStateChange(GlobalIndex, Widget, OldState, NewState);
+}
+
+void UBaseStrategyWidget::UpdateVisibleWidgets()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+	
+	if (GetItemCount() == 0)
+	{
+#if WITH_EDITOR
+		if (DebugItemCount <= 0)
+		{
+			return;
+		}
+
+		if (IsDesignTime())
+		{
+			return;
+		}
+		
+		// Create debug data for easy layout testing in the editor
+		TArray<UObject*> DebugItems;
+		for (int32 i = 0; i < DebugItemCount ; ++i)
+		{
+			UDebugRadialItem* DebugItem = NewObject<UDebugRadialItem>(this);
+			DebugItem->DebugLabel = FString::Printf(TEXT("Item %d"), i);
+			DebugItem->Id = i;
+			DebugItems.Add(DebugItem);
+		}
+
+		// Use the newly created debug data and update again
+		SetItems(DebugItems);
+#endif
+		return;
+	}
+
+	if (!WidgetTree)
+	{
+		return;
+	}
+
+	// Gather all the indices we want to keep.
+	TSet<int32> DesiredIndices = GetLayoutStrategyChecked().ComputeDesiredIndices();
+
+	// Log the desired indices
+	FString DesiredIndicesStr;
+	for (const int32 Index : DesiredIndices)
+	{
+		DesiredIndicesStr += FString::Printf(TEXT("%d, "), Index);
+	}
+	UE_LOG(LogStrategyUI, Verbose, TEXT("Desired indices: %s"), *DesiredIndicesStr);
+
+	// 1) Release any old widgets that are no longer needed (scrolled out of view)
+	ReleaseUndesiredWidgets(DesiredIndices);
+	
+	// 2) Create or update each desired widget
+	for (const int32 GlobalIndex : DesiredIndices)
+	{
+		TryHandlePooledEntryStateTransition(GlobalIndex);
+		PositionWidget(GlobalIndex);
+		UpdateEntryWidget(GlobalIndex);
+	}
+}
+
+void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
+{
+	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
+
+	// Set common slot properties
+	const FVector2D& EntrySize = GetLayoutStrategyChecked().ComputeEntryWidgetSize(GlobalIndex);
+	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+
+	// Make sure it's actually on the Canvas and prepare to update the slot properties
+	if (Widget->GetParent() != CanvasPanel)
+	{
+		CanvasPanel->AddChildToCanvas(Widget);
+	}
+	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
+	check(CanvasSlot);
+
+	CanvasSlot->SetAutoSize(false);
+	CanvasSlot->SetSize(EntrySize);
+	CanvasSlot->SetZOrder(0);
+	CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+	CanvasSlot->SetPosition(LocalPos);
 }

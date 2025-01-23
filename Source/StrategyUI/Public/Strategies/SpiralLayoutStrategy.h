@@ -16,6 +16,13 @@ class STRATEGYUI_API USpiralLayoutStrategy : public URadialLayoutStrategy
 
 public:
 	/**
+	 * If true, items will be laid out using positive angles increasing in the "clockwise" direction.
+	 * If false, the angles will be negated, reversing to counterclockwise layout.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpiralStrategy|Layout")
+	bool bClockwiseSpiral = true;
+	
+	/**
 	 * Entries are offset outward based on distance from the focused item.
 	 * This setting controls the maximum offset (in screen units) at the farthest points (distance factor of 1).
 	 */
@@ -36,28 +43,32 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpiralStrategy|Layout")
 	float DistanceFactorTurnThreshold = 2.f;
 
-public:
+	//--------------------------------------------------------------------------
+	// RadialLayoutStrategy overrides
+	//--------------------------------------------------------------------------
 	virtual int32 UpdateGapSegments(const int32 TotalItems) override;
-	
 	virtual TSet<int32> ComputeDesiredIndices() override;
-
 	virtual FVector2D ComputeEntryWidgetSize(const int32 GlobalIndex) override;
-	
 	virtual FVector2D GetItemPosition(const int32 GlobalIndex) const override;
-
 	virtual int32 FindFocusedGlobalIndexByAngle() const override;
-	
 	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const override;
-	
 	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
-
+	
+	virtual float CalculateItemAngleDegreesForGlobalIndex(int32 GlobalIndex) const override;
 	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const override;
-	
 	virtual float CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const override;
-
-	virtual float GetMinRadius() const override;
 	
+	virtual float GetMinRadius() const override;
 	virtual float GetMaxRadius() const override;
 
-	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const override;
+	/**
+	 * Draws debug visuals for the spiral layout.
+	 * - Inherits circles from the parent radial strategy
+	 * - Adds additional circles for SpiralOutwardOffset/SpiralInwardOffset
+	 * - Draws a yellow line sampling the spiral path itself
+	 */
+	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry,
+		FSlateWindowElementList& OutDrawElements,
+		const int32 LayerId,
+		const FVector2D& Center) const override;
 };

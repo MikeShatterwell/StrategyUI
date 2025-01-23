@@ -57,7 +57,7 @@ public:
 	 * This is mostly useful for handling virtualized entries in an infinite list (see spiral layout strategy for example).
 	 * Defaults to simply returning the given index as is sufficient for most basic layout strategies.
 	 */
-	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const { return GlobalIndex; };
+	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const { return INDEX_NONE; };
 	
 	/**
 	 * Checks if the given global index is within the "visible window" of items.
