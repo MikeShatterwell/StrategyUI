@@ -6,7 +6,6 @@
 #include <Fonts/SlateFontInfo.h>
 #include <Styling/CoreStyle.h>
 
-#include "DebugRadialItem.h"
 #include "Interfaces/IRadialItemEntry.h"
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Strategies/BaseLayoutStrategy.h"
@@ -302,16 +301,7 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	
 	UpdateFocusIndex();
 	UpdateVisibleWidgets();
-
-
-	FTimerManager& TimerManager = GetWorld()->GetTimerManager();
-	TimerManager.SetTimerForNextTick([this]()
-	{
-		// Defer updating material data to the next tick
-		// This fixes a tricky bug where, when a pooled widget is reused, it may have stale material data for a frame
-		// which appears as a flicker
-		SyncMaterialData();
-	});
+	SyncMaterialData();
 }
 
 int32 URadialStrategyWidget::NativePaint(
@@ -346,8 +336,10 @@ int32 URadialStrategyWidget::NativePaint(
 	{
 		return MaxLayer;
 	}
-	
+
+#if !UE_BUILD_SHIPPING
 	DrawItemDebugInfo(AllottedGeometry, OutDrawElements, LayerId);
+#endif
 	
 	return MaxLayer;
 }
@@ -377,10 +369,10 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 			
 		// Convert global index -> data index
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-		if (DataIndex == INDEX_NONE) // e.g. if GetItemCount() == 0
+		/*if (DataIndex == INDEX_NONE) // e.g. if GetItemCount() == 0
 		{
 			continue;
-		}
+		}*/
 
 		// Is the data index valid in the array?
 		const bool bValidData = Items.IsValidIndex(DataIndex);
@@ -418,6 +410,10 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 			if (!bValidData)
 			{
 				DebugString += TEXT("\n[Invalid Item]");
+			}
+			if (DataIndex == INDEX_NONE)
+			{
+				DebugString += TEXT("\n[No Data - In Gap]");
 			}
 
 			const FVector2D ScreenPos = Center + LocalPos;
@@ -579,10 +575,12 @@ void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	const float AngularSpacing = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
-
+	const float ItemAngleDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>()
+		.CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
+	
 	// 1) Figure out angles (in normalized 0..1). E.g.:
-	const float RawStartDeg = InGlobalIndex * AngularSpacing - (AngularSpacing * 0.5); // e.g.  0..360..720 if multiple turns
+	// Subtract half a wedge from that final angle
+	const float RawStartDeg = ItemAngleDeg - (GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing() * 0.5f);
 	
 	// A helper to clamp angle into [0..360)
 	auto ClampAngle0To360 = [](float A) {
@@ -596,7 +594,7 @@ void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget
 	constexpr float HalfGap = Gap * 0.5f;
 
 	const float GappedStartDeg = StartDeg + HalfGap;
-	const float WedgeWidthDeg = AngularSpacing - Gap;
+	const float WedgeWidthDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing() - Gap;
 
 	// 2) We pass "AngleOffset" and "WedgeWidth" to the material
 	const float AngleOffsetN = GappedStartDeg / 360.f;

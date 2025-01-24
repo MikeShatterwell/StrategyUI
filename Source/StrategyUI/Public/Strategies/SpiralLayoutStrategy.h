@@ -16,8 +16,7 @@ class STRATEGYUI_API USpiralLayoutStrategy : public URadialLayoutStrategy
 
 public:
 	/**
-	 * If true, items will be laid out using positive angles increasing in the "clockwise" direction.
-	 * If false, the angles will be negated, reversing to counterclockwise layout.
+	 * Changes the spiral's direction.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpiralStrategy|Layout")
 	bool bClockwiseSpiral = true;

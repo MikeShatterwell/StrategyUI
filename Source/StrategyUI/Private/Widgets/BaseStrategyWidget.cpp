@@ -76,7 +76,6 @@ void UBaseStrategyWidget::NativeConstruct()
 
 void UBaseStrategyWidget::Reset()
 {
-	// Clear pool
 	EntryWidgetPool.ResetPool();
 	IndexToWidgetMap.Empty();
 	Items.Empty();

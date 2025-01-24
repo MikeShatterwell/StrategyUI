@@ -56,39 +56,43 @@ FVector2D USpiralLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const
 
 	const float PosX = FinalRadius * FMath::Cos(ItemAngleRad);
 	const float PosY = FinalRadius * FMath::Sin(ItemAngleRad);
-	// @TODO: Implement Clockwise option here 
 	return FVector2D(PosX, PosY);
 }
 
 int32 USpiralLayoutStrategy::FindFocusedGlobalIndexByAngle() const
 {
-	if (FMath::IsNearlyZero(AngularSpacing))
+	const float EffectiveAngularSpacing = GetAngularSpacing();
+	if (FMath::IsNearlyZero(EffectiveAngularSpacing))
 	{
 		return 0;
 	}
 	// Spiral can have unbounded angles. We'll offset by half a wedge:
-	const float OffsetAngle = LatestPointerAngle + (AngularSpacing * 0.5f);
-	return FMath::FloorToInt(OffsetAngle / AngularSpacing);
+	const float EffectivePointerAngle = bClockwiseSpiral ? LatestPointerAngle : -LatestPointerAngle;
+	const float OffsetAngle = EffectivePointerAngle + (EffectiveAngularSpacing * 0.5f);
+	return FMath::FloorToInt(OffsetAngle / EffectiveAngularSpacing);
 }
 
 float USpiralLayoutStrategy::ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const
 {
 	if (NumItems <= 0)
 	{
-		return LatestPointerAngle;
+		return GetPointerAngle();
 	}
+	
+	const float EffectiveAngularSpacing = GetAngularSpacing();
 
-	const float ItemBaseAngle = DataIndex * AngularSpacing;
-	const float CycleStep = (NumItems + GapPaddingSegments) * AngularSpacing;
+	const float ItemBaseAngle = DataIndex * EffectiveAngularSpacing;
+	const float CycleStep = (NumItems + GapPaddingSegments) * EffectiveAngularSpacing;
 
 	// Avoid dividing by zero
 	if (FMath::IsNearlyZero(CycleStep))
 	{
 		return ItemBaseAngle;
 	}
+	const float LatestEffectivePointerAngle = GetPointerAngle();
 
 	// offset = how far "past" the base angle we are
-	const float Offset = (LatestPointerAngle - ItemBaseAngle);
+	const float Offset = (LatestEffectivePointerAngle - ItemBaseAngle);
 
 	// fractional cycle index
 	const float nFloat  = Offset / CycleStep;
@@ -100,8 +104,8 @@ float USpiralLayoutStrategy::ComputeShortestUnboundAngleForDataIndex(const int32
 	const float CeilAngle  = ItemBaseAngle + (nCeil  * CycleStep);
 
 	// Measure the absolute difference between the two angles
-	const float DistFloor = FMath::Abs(FloorAngle - LatestPointerAngle);
-	const float DistCeil  = FMath::Abs(CeilAngle  - LatestPointerAngle);
+	const float DistFloor = FMath::Abs(FloorAngle - LatestEffectivePointerAngle);
+	const float DistCeil  = FMath::Abs(CeilAngle  - LatestEffectivePointerAngle);
 
 	// Return the smaller of the two angles (shortest unbound angle to the pointer)
 	return (DistFloor <= DistCeil) ? FloorAngle : CeilAngle;
@@ -126,8 +130,8 @@ int32 USpiralLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) con
 
 float USpiralLayoutStrategy::CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const
 {
-	// @TODO: Implement Clockwise option here 
-	return Super::CalculateItemAngleDegreesForGlobalIndex(GlobalIndex);
+	const float Angle = GlobalIndex * GetAngularSpacing();
+	return bClockwiseSpiral ? Angle : -Angle;
 }
 
 float USpiralLayoutStrategy::CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const
@@ -135,7 +139,7 @@ float USpiralLayoutStrategy::CalculateDistanceFactorForGlobalIndex(const int32 G
 	// Item angle is fixed, but radius depends on partial turn difference
 	const float ItemAngleDeg = CalculateItemAngleDegreesForGlobalIndex(GlobalIndex);
 
-	const float PointerTurns = LatestPointerAngle / 360.f;
+	const float PointerTurns = GetPointerAngle() / 360.f;
 	const float ItemTurns = ItemAngleDeg / 360.f;
 	const float TurnDiff = PointerTurns - ItemTurns;
 
@@ -167,7 +171,7 @@ float USpiralLayoutStrategy::GetMaxRadius() const
 }
 
 void USpiralLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId,
-	const FVector2D& Center) const
+                                             const FVector2D& Center) const
 {
 	Super::DrawDebugVisuals(AllottedGeometry, OutDrawElements, LayerId, Center);
 
@@ -227,12 +231,43 @@ void USpiralLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, 
 		);
 	}
 
-	// 3) Draw a *continuous spiral path* around the pointer in yellow,
-	//    by sampling "global indexes" around the pointer's focus index.
+	// 3) Draw the entire spiral in gray
+	{
+		constexpr int32 RangeAroundFocus = 50.f;
+
+		// Find whichever global index is "focused" by the pointer right now:
+		const int32 CenterGlobalIndex = FindFocusedGlobalIndexByAngle();
+
+		// Build a polyline from [CenterIndex - Range .. CenterIndex + Range].
+		TArray<FVector2D> SpiralPoints;
+		SpiralPoints.Reserve(RangeAroundFocus * 2 + 1);
+
+		for (int32 i = CenterGlobalIndex - RangeAroundFocus; i <= CenterGlobalIndex + RangeAroundFocus; ++i)
+		{
+			// Get the *local position* of item i (0,0 is the center).
+			FVector2D LocalPos = GetItemPosition(i);
+
+			// Shift by the actual widget center to make it screen-space
+			SpiralPoints.Add(Center + LocalPos);
+		}
+
+		// Finally, issue the draw call. We get a single continuous line.
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			SpiralPoints,
+			ESlateDrawEffect::None,
+			FLinearColor(/*Gray*/.3f, .3f, .3f, .5f),
+			true,
+			2.f
+		);
+	}
+
+	// 4) Draw the portion of the spiral that represents the visible range in yellow
 	{
 		// How big a chunk of the spiral do we draw on each side of the pointer?
-		// Increase if you want a longer visual spiral.
-		constexpr int32 RangeAroundFocus = 50;
+		const int32 RangeAroundFocus = MaxVisibleEntries * 0.5f;
 
 		// Find whichever global index is "focused" by the pointer right now:
 		const int32 CenterGlobalIndex = FindFocusedGlobalIndexByAngle();

@@ -81,7 +81,7 @@ public:
 	 * Gets the latest pointer angle in degrees.
 	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
 	 */
-	float GetPointerAngle() const { return LatestPointerAngle; }
+	virtual float GetPointerAngle() const { return LatestPointerAngle; }
 
 	/**
 	 * Computes the number of "gap segments" to add after the last item.
@@ -98,7 +98,7 @@ public:
 	/**
 	 * Angle difference between each item in the layout. Assumes equidistant segments.
 	 */
-	float GetAngularSpacing() const { return AngularSpacing; }
+	virtual float GetAngularSpacing() const { return AngularSpacing; }
 
 	/**
 	* Gets the global index representing the head of the "visible window" (for item num > MaxVisibleEntries).
