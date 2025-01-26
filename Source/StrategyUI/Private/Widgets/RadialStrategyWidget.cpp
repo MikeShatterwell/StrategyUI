@@ -57,9 +57,15 @@ void URadialStrategyWidget::SetItems(const TArray<UObject*>& InItems)
 	ResetInput();
 }
 
-void URadialStrategyWidget::HandleInput(const FVector2D& Delta, const float DeltaTime)
+void URadialStrategyWidget::HandleStickInput(const FVector2D& Delta)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return; // No world, skip
+	}
 	
 	if (Delta.IsNearlyZero())
 	{
@@ -85,11 +91,56 @@ void URadialStrategyWidget::HandleInput(const FVector2D& Delta, const float Delt
 	// Tangential movement determines rotation direction and speed
 	const float TangentialDelta = FVector2D::CrossProduct(PointerPosition, NormalizedDelta);
 
-	// Scale by a sensitivity factor (optional) and DeltaTime for smooth motion
-	const float RotationDeltaDegrees = TangentialDelta * RotationSensitivity * DeltaTime;
+	// Scale by a sensitivity factor and DeltaTime for smooth motion
+	const float RotationDeltaDegrees = TangentialDelta * RotationSensitivity * World->GetDeltaSeconds();
 
 	// Apply the calculated rotation delta
 	ApplyManualRotation(RotationDeltaDegrees);
+}
+
+void URadialStrategyWidget::HandleMouseInput(const FVector2D& InMouseScreenPos)
+{
+	// 1) Convert screen to local coords
+	const FVector2D& LocalPos = GetCachedGeometry().AbsoluteToLocal(InMouseScreenPos);
+	const FVector2D& ToMouse  = LocalPos - Center;
+	if (ToMouse.IsNearlyZero())
+	{
+		return; // too close to center
+	}
+	
+	auto WrapAngleToPlusMinus180 = [](const float Angle) -> float
+	{
+		// Wrap raw angle to [–180..180].
+		float Wrapped = FMath::Fmod(Angle, 360.f);
+		if (Wrapped > 180.f)
+		{
+			Wrapped -= 360.f;
+		}
+		else if (Wrapped < -180.f)
+		{
+			Wrapped += 360.f;
+		}
+		return Wrapped;
+	};
+
+	// 2) Cancel any animation in progress
+	if (RuntimeScrollingAnimState.bIsAnimating)
+	{
+		RuntimeScrollingAnimState.bIsAnimating = false;
+	}
+
+	// 3) Compute the new “atan2” angle in [–180..180]
+	const float NewAtan2Angle = FMath::RadiansToDegrees(FMath::Atan2(ToMouse.Y, ToMouse.X));
+
+	// 4) Derive "last frame's angle" in [–180..180] by wrapping our unbounded pointer angle
+	const float CurrentAngleWrapped = WrapAngleToPlusMinus180(CurrentPointerAngle);
+
+	// 5) Compute the actual delta in [–180..180]
+	const float DeltaAngle = FMath::FindDeltaAngleDegrees(CurrentAngleWrapped, NewAtan2Angle);
+
+	// 6) Accumulate into our unbounded pointer angle
+	const float WorkingAngle = CurrentPointerAngle + DeltaAngle;
+	SetCurrentAngle(WorkingAngle);
 }
 
 void URadialStrategyWidget::StepIndex(const int32 Delta)
@@ -500,14 +551,17 @@ void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
 	check(CanvasSlot);
-	
+
 	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+
+	CanvasSlot->SetPosition(Center + LocalPos); // Radial entries are positioned at the center of the radius...
+	// ... Or use render transform to move the widget into positions:
 	
-	CanvasSlot->SetPosition(Center); // Radial entries are positioned at the center of the radius...
-	// ... And use render transform to move the widget into positions
-	Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
-	Widget->SetRenderTranslation(LocalPos);
+	//CanvasSlot->SetPosition(Center);
+	//Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	//Widget->SetRenderTranslation(LocalPos);
 }
+
 
 void URadialStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 {
@@ -547,8 +601,8 @@ void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget
 	};
 	const float StartDeg = ClampAngle0To360(RawStartDeg);
 
-	constexpr float Gap = 1.f; // small gap between wedges, @TODO: Make this a parameter
-	constexpr float HalfGap = Gap * 0.5f;
+	const float Gap = DynamicWedgeGapSize; // small gap between wedges
+	const float HalfGap = Gap * 0.5f;
 
 	const float GappedStartDeg = StartDeg + HalfGap;
 	const float WedgeWidthDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing() - Gap;

@@ -3,8 +3,6 @@
 #include <CoreMinimal.h>
 
 #include <Blueprint/UserWidgetPool.h>
-#include <Blueprint/UserWidget.h>
-#include <Components/CanvasPanel.h>
 
 #include "BaseStrategyWidget.h"
 #include "RadialStrategyWidget.generated.h"
@@ -86,12 +84,14 @@ public:
 	// RadialSpiralWidget API
 	// ---------------------------------------------------------------------------------------------
 	/**
-	 * Handles radial input from mouse/joystick/etc.
+	 * Handles radial input from joystick/etc.
 	 * @param Delta     2D directional input.
-	 * @param DeltaTime Frame time, for smooth rotation if desired.
 	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
-	void HandleInput(const FVector2D& Delta, float DeltaTime);
+	void HandleStickInput(const FVector2D& Delta);
+	
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
+	void HandleMouseInput(const FVector2D& InMouseScreenPos);
 
 	/** Resets the pointer angle, visible window, etc. */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
@@ -175,6 +175,10 @@ protected:
 	/** Sensitivity for input rotation (higher = faster scrolling). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategyWidget")
 	float RotationSensitivity = 100.f;
+
+	/** Gap (in degrees) between wedge slices used in the calculation of the radial wedge material. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategyWidget")
+	float DynamicWedgeGapSize = 1.f;
 	
 	/**
 	 * Current pointer angle in degrees; can exceed 360 or be negative.
