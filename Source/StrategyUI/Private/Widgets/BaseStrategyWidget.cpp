@@ -72,6 +72,10 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 void UBaseStrategyWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
+	IndexToStateMap.Reserve(MaxVisibleEntries);
+	IndexToWidgetMap.Reserve(MaxVisibleEntries);
 }
 
 void UBaseStrategyWidget::Reset()

@@ -24,13 +24,6 @@ public:
 	/** Number of radial segments for layout */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RadialStrategy|Layout", meta=(ClampMin="1"))
 	int32 RadialSegmentCount = 8;
-	
-	/**
-	 * Maximum number of visible entries at once (centered around the focused item).
-	 * If Items.Num() exceeds this value, we only display a subset "visible window" that scrolls as the pointer rotates through the items.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialStrategy|Entry", meta=(ClampMin="1"))
-	int32 MaxVisibleEntries = 8;
 
 	/**
 	 * Number of entries to keep deactivated (hidden) outside the bounds of the visible window.
@@ -81,7 +74,7 @@ public:
 	 * Gets the latest pointer angle in degrees.
 	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
 	 */
-	virtual float GetPointerAngle() const { return LatestPointerAngle; }
+	float GetPointerAngle() const { return LatestPointerAngle; }
 
 	/**
 	 * Computes the number of "gap segments" to add after the last item.

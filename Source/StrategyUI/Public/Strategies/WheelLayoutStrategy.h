@@ -14,6 +14,8 @@ class STRATEGYUI_API UWheelLayoutStrategy : public URadialLayoutStrategy
 	GENERATED_BODY()
 
 public:
+	virtual void InitializeStrategy(UBaseStrategyWidget* OwnerWidget) override;
+	
 	virtual float SanitizeAngle(const float InAngle) const override;
 
 	virtual int32 UpdateGapSegments(const int32 TotalItems) override;

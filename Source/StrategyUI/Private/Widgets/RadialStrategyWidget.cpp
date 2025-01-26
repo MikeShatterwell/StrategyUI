@@ -35,6 +35,12 @@ void URadialStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& C
 			CompileLog.Error(FText::FromString(TEXT("EntryWidgetClass must implement IRadialItemEntry interface!")));
 		}
 	}
+	
+	const URadialLayoutStrategy* RadialLayout = Cast<URadialLayoutStrategy>(LayoutStrategy);
+	if (!RadialLayout)
+	{
+		CompileLog.Error(FText::FromString(TEXT("Please assign a URadialLayoutStrategy in the details panel!")));
+	}
 }
 
 void URadialStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -55,7 +61,7 @@ void URadialStrategyWidget::HandleInput(const FVector2D& Delta, const float Delt
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	
-	if (Delta.IsZero())
+	if (Delta.IsNearlyZero())
 	{
 		return; // No movement, skip
 	}
@@ -91,6 +97,13 @@ void URadialStrategyWidget::StepIndex(const int32 Delta)
 	StepIndexAnimated(Delta);
 }
 
+float URadialStrategyWidget::ScaleDurationByGapItems(const float InitialDuration) const
+{
+	const int32 NumGapItems = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetGapSegments();
+	const float FinalDuration = InitialDuration * (1.f + NumGapItems);
+	return FinalDuration;
+}
+
 void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Duration)
 {
 	const UWorld* World = GetWorld();
@@ -104,77 +117,25 @@ void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Dur
 		return;
 	}
 
-	if (!LayoutStrategy)
-	{
-		return;
-	}
-
-	float FinalDuration = (Duration <= 0.f) ? World->GetDeltaSeconds() : Duration;
+	float FinalDuration = (Duration <= 0.f) ? World->GetDeltaSeconds() * 2.f : Duration;
+	bool bCrossedGap = false;
 	
 	const int32 CurrentIndex = DataFocusedIndex;
 	int32 TargetDataIndex = (CurrentIndex + Delta) % GetItemCount();
 	if (TargetDataIndex < 0)
 	{
-		// Stepping back from 0 to the last index in Spiral mode
+		// Stepping back from 0 to the last index
 		TargetDataIndex = GetItemCount() - 1;
+		bCrossedGap = true;
 	}
-
-	// The following logic improves the scrolling UX by allowing the user to interrupt the gap crossing
-	// animation with a second consecutive input in the same direction.
-
-	// Are we “currently crossing” the gap from an INDEX_NONE state?
-	const bool bCurrentlyCrossingGap = (CurrentIndex == INDEX_NONE);
-
-	// Check if crossing from 0 -> N-1 or from N-1 -> 0
-	const bool bForward = (Delta > 0);
-	const bool bCrossedGap = 
-		   (bForward && TargetDataIndex < CurrentIndex)    // e.g. going forward from last index back to 0
-		|| (!bForward && TargetDataIndex > CurrentIndex)   // e.g. going backward from 0 to last index
-		|| bCurrentlyCrossingGap;                          // or from the initial gap state
-
-	static bool bLastCrossDirection = false;
-	static bool bCrossedGapLastTime = false;
+	else if (CurrentIndex == GetItemCount() - 1 && TargetDataIndex == 0)
+	{
+		bCrossedGap = true;
+	}
 
 	if (bCrossedGap)
 	{
-		// Check if we just *previously* crossed the gap in the same direction
-		const bool bSameDirectionAsBefore = (bForward == bLastCrossDirection);
-
-		if (bCrossedGapLastTime && bSameDirectionAsBefore)
-		{
-			// This is the second consecutive cross in the same direction.
-			// Skip or drastically reduce the gap penalty. For example:
-			UE_LOG(LogStrategyUI, Verbose, TEXT("Skipping gap on second consecutive cross"));
-
-			// We could skip entirely:
-			//     /* do nothing special */ 
-			// Or we could partially reduce:
-			FinalDuration *= 0.25f; // e.g. only 25% of normal
-		}
-		else
-		{
-			// Original logic: scale by gap segments
-			FinalDuration *= GetLayoutStrategyChecked<URadialLayoutStrategy>().GetGapSegments();
-		}
-
-		// Record that we definitely crossed a gap this time
-		bCrossedGapLastTime  = true;
-		bLastCrossDirection  = bForward;
-	}
-	else
-	{
-		// Did not cross a gap this time
-		bCrossedGapLastTime = false;
-	}
-
-	if (bCurrentlyCrossingGap)
-	{
-		// Your existing logic that subtracts out “last gap” time if we’re
-		// currently crossing from an initial state, etc.
-		static float LastGapDuration = 0.f;
-		LastGapDuration = FinalDuration; // keep track if you want more nuance
-		FinalDuration -= LastGapDuration;
-		LastGapDuration = 0.f;
+		FinalDuration = ScaleDurationByGapItems(World->GetDeltaSeconds());
 	}
 
 	ScrollToItemAnimated(TargetDataIndex, FinalDuration);
@@ -369,10 +330,6 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 			
 		// Convert global index -> data index
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-		/*if (DataIndex == INDEX_NONE) // e.g. if GetItemCount() == 0
-		{
-			continue;
-		}*/
 
 		// Is the data index valid in the array?
 		const bool bValidData = Items.IsValidIndex(DataIndex);

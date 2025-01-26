@@ -1,6 +1,24 @@
 ﻿#include "Strategies/WheelLayoutStrategy.h"
 
+#include "Utils/LogStrategyUI.h"
+
 #include UE_INLINE_GENERATED_CPP_BY_NAME(WheelLayoutStrategy)
+
+void UWheelLayoutStrategy::InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
+{
+	Super::InitializeStrategy(OwnerWidget);
+
+	if (NumItems > RadialSegmentCount)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%hs: NumItems is greater than RadialSegmentCount. Increasing the segment count to fit the number of items."), __FUNCTION__);
+		RadialSegmentCount = NumItems;
+	}
+
+	MaxVisibleEntries = FMath::Min(MaxVisibleEntries, RadialSegmentCount);
+	
+	UpdateGapSegments(NumItems);
+	UpdateAngularSpacing();
+}
 
 float UWheelLayoutStrategy::SanitizeAngle(const float InAngle) const
 {
@@ -25,11 +43,12 @@ TSet<int32> UWheelLayoutStrategy::ComputeDesiredIndices()
 {
 	// Wheel layout has no concept of a "visible window" since all items are always visible
 	VisibleStartIndex = 0;
-	VisibleEndIndex = RadialSegmentCount; //NumItems - 1;
+	VisibleEndIndex = RadialSegmentCount;
 	
 	TSet<int32> Indices;
+	Indices.Reserve(RadialSegmentCount);
 
-	const int32 EndIndex = RadialSegmentCount;//FMath::Min(VisibleStartIndex + MaxVisibleEntries, NumItems);
+	const int32 EndIndex = RadialSegmentCount;
 	for (int32 i = VisibleStartIndex; i < EndIndex; ++i)
 	{
 		Indices.Add(i);

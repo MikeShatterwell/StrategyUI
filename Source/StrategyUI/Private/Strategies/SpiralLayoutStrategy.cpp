@@ -50,12 +50,14 @@ FVector2D USpiralLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)
 FVector2D USpiralLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const
 {
 	const float ItemAngleDeg = CalculateItemAngleDegreesForGlobalIndex(GlobalIndex);
+	
 	const float ItemAngleRad = FMath::DegreesToRadians(ItemAngleDeg);
 
 	const float FinalRadius = CalculateRadiusForGlobalIndex(GlobalIndex);
 
 	const float PosX = FinalRadius * FMath::Cos(ItemAngleRad);
 	const float PosY = FinalRadius * FMath::Sin(ItemAngleRad);
+	
 	return FVector2D(PosX, PosY);
 }
 
@@ -67,8 +69,7 @@ int32 USpiralLayoutStrategy::FindFocusedGlobalIndexByAngle() const
 		return 0;
 	}
 	// Spiral can have unbounded angles. We'll offset by half a wedge:
-	const float EffectivePointerAngle = bClockwiseSpiral ? LatestPointerAngle : -LatestPointerAngle;
-	const float OffsetAngle = EffectivePointerAngle + (EffectiveAngularSpacing * 0.5f);
+	const float OffsetAngle = GetPointerAngle() + (EffectiveAngularSpacing * 0.5f);
 	return FMath::FloorToInt(OffsetAngle / EffectiveAngularSpacing);
 }
 
@@ -130,8 +131,7 @@ int32 USpiralLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) con
 
 float USpiralLayoutStrategy::CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const
 {
-	const float Angle = GlobalIndex * GetAngularSpacing();
-	return bClockwiseSpiral ? Angle : -Angle;
+	return GlobalIndex * GetAngularSpacing();
 }
 
 float USpiralLayoutStrategy::CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const

@@ -16,12 +16,6 @@ class STRATEGYUI_API USpiralLayoutStrategy : public URadialLayoutStrategy
 
 public:
 	/**
-	 * Changes the spiral's direction.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpiralStrategy|Layout")
-	bool bClockwiseSpiral = true;
-	
-	/**
 	 * Entries are offset outward based on distance from the focused item.
 	 * This setting controls the maximum offset (in screen units) at the farthest points (distance factor of 1).
 	 */

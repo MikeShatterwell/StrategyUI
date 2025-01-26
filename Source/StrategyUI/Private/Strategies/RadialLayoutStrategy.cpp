@@ -12,7 +12,6 @@ void URadialLayoutStrategy::InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
 
 	UpdateGapSegments(NumItems);
 	UpdateAngularSpacing();
-	// UpdateVisibleWindow(FindFocusedGlobalIndexByAngle()); // @TODO: Update visible window as part of finding desired indices
 }
 
 void URadialLayoutStrategy::ValidateStrategy(TArray<FText>& OutErrors) const

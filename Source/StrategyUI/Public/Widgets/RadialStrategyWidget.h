@@ -211,6 +211,9 @@ protected:
 
 	/** Begin an animation from CurrentAngle to InTargetAngle over Duration. */
 	void BeginAngleAnimation(float InTargetAngle, float Duration);
+
+	/** Called by StepIndexAnimated to determine the final duration based on the number of gap items crossed. */
+	float ScaleDurationByGapItems(const float FinalDuration) const;
 	
 
 	/***********************************************************************************************

@@ -72,4 +72,11 @@ public:
 	 * Called automatically by FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals if using that utility.
 	 */
 	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const {};
+
+	/**
+	 * Maximum number of visible entries at once.
+	 * If Items.Num() exceeds this value, we only display a subset "visible window" that is determined by ComputeDesiredIndices.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
+	int32 MaxVisibleEntries = 8;
 };

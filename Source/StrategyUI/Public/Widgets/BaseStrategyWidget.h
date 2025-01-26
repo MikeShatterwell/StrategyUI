@@ -35,6 +35,23 @@ public:
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
+	/**
+	 * Strategy object used for laying out items in a radial pattern.
+	 * Set to a subclass of UBaseLayoutStrategy and override virtual functions as needed to customize behavior.
+	 * Included by default are URadialWheelLayoutStrategy and URadialSpiralLayoutStrategy.
+	 *
+	 * @TODO: Floating marker widget strategy
+	 * 
+	 * URadialWheelLayoutStrategy: A simple wheel layout with equidistant segments.
+	 * URadialSpiralLayoutStrategy: A more complex layout that allows for infinite scrolling and a spiral pattern.
+	*/
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget")
+	TObjectPtr<UBaseLayoutStrategy> LayoutStrategy = nullptr;
+
+	/** Custom entry widget class (must implement IStrategyEntryBase). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
+	TSubclassOf<UUserWidget> EntryWidgetClass;
+
 #pragma region Public API
 	// ---------------------------------------------------------------------------------------------
 	// Base setters and getters
@@ -85,8 +102,9 @@ protected:
 	template<typename T>
 	T& GetLayoutStrategyChecked() const
 	{
-		check(LayoutStrategy);
-		return *static_cast<T*>(LayoutStrategy);
+		T* StrategyType = Cast<T>(LayoutStrategy);
+		check(StrategyType);
+		return *StrategyType;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -102,6 +120,7 @@ protected:
 
 	/** Called when building or updating the entry widget for item at 'Index'. */
 	virtual void UpdateEntryWidget(int32 InGlobalIndex);
+	
 	virtual void NotifyStrategyEntryStateChange(int32 GlobalIndex, UUserWidget* Widget, const FGameplayTag& OldState, const FGameplayTag& NewState);
 	virtual void TryHandlePooledEntryStateTransition(int32 GlobalIndex);
 
@@ -111,7 +130,7 @@ protected:
 
 
 	// ---------------------------------------------------------------------------------------------
-	// Properties
+	// Runtime Properties
 	// ---------------------------------------------------------------------------------------------
 	/** The source of truth data array. Subclasses can interpret these items in any way needed. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget|Data")
@@ -135,23 +154,6 @@ protected:
 	UPROPERTY(Transient)
 	TMap<int32, FGameplayTag> IndexToStateMap;
 
-	/**
-	 * Strategy object used for laying out items in a radial pattern.
-	 * Set to a subclass of UBaseLayoutStrategy and override virtual functions as needed to customize behavior.
-	 * Included by default are URadialWheelLayoutStrategy and URadialSpiralLayoutStrategy.
-	 *
-	 * @TODO: Floating marker widget strategy
-	 * 
-	 * URadialWheelLayoutStrategy: A simple wheel layout with equidistant segments.
-	 * URadialSpiralLayoutStrategy: A more complex layout that allows for infinite scrolling and a spiral pattern.
-	*/
-	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget")
-	TObjectPtr<UBaseLayoutStrategy> LayoutStrategy = nullptr;
-
-	/** Custom entry widget class (must implement IStrategyEntryBase). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
-	TSubclassOf<UUserWidget> EntryWidgetClass;
-
 	//----------------------------------------------------------------------------------------------
 	// Bound Widgets
 	//----------------------------------------------------------------------------------------------
@@ -163,6 +165,9 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category="StrategyUI|BaseStrategyWidget")
 	TObjectPtr<UCanvasPanel> CanvasPanel = nullptr;
 
+	//----------------------------------------------------------------------------------------------
+	// Debug
+	//----------------------------------------------------------------------------------------------
 	/** If true, we debug-draw pointer lines, circles, angles, etc. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
 	bool bEnableDebugDraw = false;
