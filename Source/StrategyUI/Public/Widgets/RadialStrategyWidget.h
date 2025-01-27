@@ -62,6 +62,7 @@ class STRATEGYUI_API URadialStrategyWidget : public UBaseStrategyWidget
 public:
 	explicit URadialStrategyWidget(const FObjectInitializer& ObjectInitializer);
 
+	
 #if WITH_EDITOR
 	virtual void ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -99,6 +100,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void StepIndexAnimated(int32 Delta, const float Duration = 0.0f);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
+	void ScrollToItem(int32 DataIndex);
 
 	/**
 	 * Animate the pointer angle until it aligns with a particular ItemIndex's wedge center.
@@ -201,8 +205,8 @@ protected:
 	 * These can be used to render a wedge for the item entry in a radial layout.
 	 */
 	void ConstructMaterialData(const UUserWidget* EntryWidget, int32 InGlobalIndex, const bool bIsFocused, FRadialItemMaterialData& OutMaterialData) const;
-
-	void SyncMaterialData() const;
+	virtual void UpdateEntryWidget(int32 InGlobalIndex) override;
+	void SyncMaterialData(const int32 InGlobalIndex);
 #pragma endregion Protected Helper Functions
 
 	

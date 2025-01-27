@@ -25,6 +25,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemSelectedDelegate, int3
  *   - The pool of entry widgets
  *   - The canvas to place the entry widgets on
  *   - The layout strategy that it calls to compute positions
+ *   - The focus and selection management for the items
  *
  * Subclasses can override or extend input handling, item events, etc.
  */

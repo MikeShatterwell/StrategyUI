@@ -179,7 +179,7 @@ void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Dur
 		TargetDataIndex = GetItemCount() - 1;
 		bCrossedGap = true;
 	}
-	else if (CurrentIndex == GetItemCount() - 1 && TargetDataIndex == 0)
+	else if (CurrentIndex == GetItemCount() - 1 && TargetDataIndex >= 0)
 	{
 		bCrossedGap = true;
 	}
@@ -190,6 +190,11 @@ void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Dur
 	}
 
 	ScrollToItemAnimated(TargetDataIndex, FinalDuration);
+}
+
+void URadialStrategyWidget::ScrollToItem(const int32 DataIndex)
+{
+	SetCurrentAngle(DataIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing());
 }
 
 
@@ -274,7 +279,6 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	
 	UpdateFocusIndex();
 	UpdateVisibleWidgets();
-	SyncMaterialData();
 }
 
 int32 URadialStrategyWidget::NativePaint(
@@ -452,34 +456,32 @@ void URadialStrategyWidget::BeginAngleAnimation(const float InTargetAngle, const
 	}
 }
 
-void URadialStrategyWidget::SyncMaterialData() const
+void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	// @TODO: Iterate using AcquireEntryWidget() instead of touching the pool directly
-	for (UUserWidget* Widget : EntryWidgetPool.GetActiveWidgets())
+	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
+	
+	const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
+	if (GlobalIndexKey == nullptr || !Widget)
 	{
-		const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
-		if (GlobalIndexKey == nullptr || !Widget)
-		{
-			UE_LOG(LogStrategyUI, Error, TEXT("%hs: Invalid widget or index"), __FUNCTION__);
-			continue;
-		}
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: Invalid widget or index"), __FUNCTION__);
+		return;
+	}
 
-		const int32 GlobalIndex = *GlobalIndexKey;
-		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-		const bool bIsFocused = DataIndex == FocusedDataIndex;
-		const FGameplayTag& ItemState = IndexToStateMap.FindChecked(GlobalIndex);
+	const int32 GlobalIndex = *GlobalIndexKey;
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
+	const bool bIsFocused = DataIndex == FocusedDataIndex;
+	const FGameplayTag& ItemState = IndexToStateMap.FindChecked(GlobalIndex);
 
-		if (Widget->Implements<URadialItemEntry>())
+	if (Widget->Implements<URadialItemEntry>())
+	{
+		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI_EntryState_Active;
+		if (ItemState == ActiveState)
 		{
-			const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI_EntryState_Active;
-			if (ItemState == ActiveState)
-			{
-				FRadialItemMaterialData MaterialData;
-				ConstructMaterialData(Widget, GlobalIndex, bIsFocused, MaterialData);
-				IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
-			}
+			FRadialItemMaterialData MaterialData;
+			ConstructMaterialData(Widget, GlobalIndex, bIsFocused, MaterialData);
+			IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
 		}
 	}
 }
@@ -494,12 +496,12 @@ void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 
 	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
 
-	CanvasSlot->SetPosition(Center + LocalPos); // Radial entries are positioned at the center of the radius...
+	//CanvasSlot->SetPosition(Center + LocalPos); // Radial entries are positioned at the center of the radius...
 	// ... Or use render transform to move the widget into positions:
 	
-	//CanvasSlot->SetPosition(Center);
-	//Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
-	//Widget->SetRenderTranslation(LocalPos);
+	CanvasSlot->SetPosition(Center);
+	Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	Widget->SetRenderTranslation(LocalPos);
 }
 
 void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget, const int32 InGlobalIndex, const bool bIsFocused, FRadialItemMaterialData& OutMaterialData) const
@@ -574,5 +576,11 @@ void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget
 	MatData.bIsFocused         = bIsFocused;
 
 	OutMaterialData = MatData;
+}
+
+void URadialStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
+{
+	Super::UpdateEntryWidget(InGlobalIndex);
+	SyncMaterialData(InGlobalIndex);
 }
 #pragma endregion Protected Helper Functions

@@ -2,9 +2,11 @@
 
 #include <NativeGameplayTags.h>
 
+#define TAG(Name) STRATEGYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Name)
+
 namespace StrategyUIGameplayTags
 {
-	STRATEGYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(StrategyUI_EntryState_Pooled);
-	STRATEGYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(StrategyUI_EntryState_Deactivated);
-	STRATEGYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(StrategyUI_EntryState_Active);
+	TAG(StrategyUI_EntryState_Pooled);
+	TAG(StrategyUI_EntryState_Deactivated);
+	TAG(StrategyUI_EntryState_Active);
 }
