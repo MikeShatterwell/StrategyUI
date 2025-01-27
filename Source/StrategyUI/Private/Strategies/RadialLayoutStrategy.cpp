@@ -42,17 +42,16 @@ void URadialLayoutStrategy::SetPointerAngle(const float InAngle)
 	LatestPointerAngle = SanitizeAngle(InAngle);
 }
 
-TSet<int32> URadialLayoutStrategy::ComputeDesiredIndices()
+TSet<int32> URadialLayoutStrategy::ComputeDesiredGlobalIndices()
 {
-	TSet<int32> Indices;
-	Indices.Reserve(RadialSegmentCount);
+	VisibleGlobalIndices.Empty(RadialSegmentCount);
 
 	// All segment indices are desired in a basic radial wheel layout
 	for (int32 i = 0; i < RadialSegmentCount; ++i)
 	{
-		Indices.Add(i);
+		VisibleGlobalIndices.Add(i);
 	}
-	return Indices;
+	return VisibleGlobalIndices;
 }
 
 void URadialLayoutStrategy::UpdateAngularSpacing()

@@ -108,7 +108,7 @@ public:
 	 * Returns the set of desired global indices to display in the current visible window.
 	 * Best to call UpdateVisibleWindow before this to ensure the window is up-to-date.
 	 */
-	virtual TSet<int32> ComputeDesiredIndices() override;
+	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
 
 	/** 
 	 * Calculates how many degrees lie between consecutive data items and caches it as AngularSpacing
@@ -126,9 +126,12 @@ public:
 	 * This is useful for calculating the position of the item in the layout.
 	 */
 	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const PURE_VIRTUAL(URadialLayoutStrategy::ComputeShortestUnboundAngleForDataIndex, return 0.f;);
-	
-	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
 
+	/**
+	 * In a basic radial setup, the global index should map directly to the data index.
+	 */
+	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
+	
 	/**
 	 * Calculates the distance factor for the given global index.
 	 * This is used to determine how close an item is to the pointer's depth in [0..1] (0 = far, 0.5 = at pointer, 1 = near).
@@ -193,6 +196,11 @@ protected:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Layout")
 	int32 VisibleEndIndex = INDEX_NONE;
+
+	/**
+	 * The set of global indices that are currently visible in the layout.
+	 */
+	TSet<int32> VisibleGlobalIndices;
 
 	/** Angle difference between each item in the layout. Assumes equidistant segments. */
 	UPROPERTY(BlueprintReadOnly, Category = "RadialStrategy|Layout")

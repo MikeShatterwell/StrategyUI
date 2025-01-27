@@ -1,9 +1,8 @@
-// IRadialItemEntry.h
 #pragma once
 
+#include <UObject/Interface.h>
+
 #include "IStrategyEntryBase.h"
-#include "IStrategyInteractiveEntry.h"
-#include "UObject/Interface.h"
 #include "IRadialItemEntry.generated.h"
 
 enum class EStrategyEntryState : uint8;
@@ -49,12 +48,12 @@ public:
 };
 
 UINTERFACE(BlueprintType)
-class STRATEGYUI_API URadialItemEntry : public UStrategyInteractiveEntry
+class STRATEGYUI_API URadialItemEntry : public UStrategyEntryBase
 {
 	GENERATED_BODY()
 };
 
-class IRadialItemEntry : public IStrategyInteractiveEntry
+class IRadialItemEntry : public IStrategyEntryBase
 {
 	GENERATED_IINTERFACE_BODY()
 public:

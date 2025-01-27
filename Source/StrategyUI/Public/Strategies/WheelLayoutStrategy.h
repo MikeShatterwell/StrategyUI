@@ -20,7 +20,7 @@ public:
 
 	virtual int32 UpdateGapSegments(const int32 TotalItems) override;
 	
-	virtual TSet<int32> ComputeDesiredIndices() override;
+	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
 
 	virtual FVector2D ComputeEntryWidgetSize(const int32 GlobalIndex) override;
 

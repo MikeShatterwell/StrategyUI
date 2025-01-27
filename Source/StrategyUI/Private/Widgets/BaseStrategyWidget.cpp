@@ -90,6 +90,91 @@ void UBaseStrategyWidget::Reset()
 	}
 }
 
+void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusIndex)
+{
+	if (FocusedGlobalIndex == InNewGlobalFocusIndex)
+	{
+		return; // No change
+	}
+
+	// Unfocus old
+	if (FocusedGlobalIndex != INDEX_NONE)
+	{
+		if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+		{
+			if (OldEntry->Implements<UStrategyEntryBase>())
+			{
+				IStrategyEntryBase::Execute_BP_OnItemFocusChanged(OldEntry, /*bIsFocused=*/ false);
+			}
+		}
+	}
+
+	// Update
+	FocusedGlobalIndex = InNewGlobalFocusIndex;
+	FocusedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InNewGlobalFocusIndex);
+
+	// Broadcast focus change
+	if (FocusedDataIndex != INDEX_NONE && Items.IsValidIndex(FocusedDataIndex))
+	{
+		OnItemFocused.Broadcast(FocusedDataIndex, Items[FocusedDataIndex]);
+	}
+	else
+	{
+		OnItemFocused.Broadcast(INDEX_NONE, nullptr);
+	}
+
+	// Focus new
+	if (FocusedGlobalIndex != INDEX_NONE)
+	{
+		if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+		{
+			if (OldEntry->Implements<UStrategyEntryBase>())
+			{
+				IStrategyEntryBase::Execute_BP_OnItemFocusChanged(OldEntry, /*bIsFocused=*/ true);
+			}
+		}
+	}
+}
+
+void UBaseStrategyWidget::SetSelectedDataIndex(const int32 InDataIndex, const bool bShouldBeSelected)
+{
+	const bool bAlreadySelected = SelectedDataIndices.Contains(InDataIndex);
+	
+	if (bShouldBeSelected && !bAlreadySelected)
+	{
+		SelectedDataIndices.Add(InDataIndex);
+
+		// Broadcast new selection
+		UObject* Item = Items.IsValidIndex(InDataIndex) ? Items[InDataIndex] : nullptr;
+		OnItemSelected.Broadcast(InDataIndex, Item);
+		
+		if (UUserWidget* Entry = AcquireEntryWidget(InDataIndex))
+		{
+			if (Entry->Implements<UStrategyEntryBase>())
+			{
+				IStrategyEntryBase::Execute_BP_OnItemSelectionChanged(Entry, /*bIsSelected=*/ true);
+			}
+		}
+	}
+	else if (!bShouldBeSelected && bAlreadySelected)
+	{
+		SelectedDataIndices.Remove(InDataIndex);
+		if (UUserWidget* Entry = AcquireEntryWidget(InDataIndex))
+		{
+			if (Entry->Implements<UStrategyEntryBase>())
+			{
+				IStrategyEntryBase::Execute_BP_OnItemSelectionChanged(Entry, /*bIsSelected=*/ false);
+			}
+		}
+	}
+}
+
+void UBaseStrategyWidget::ToggleFocusedIndex()
+{
+	const bool bNewSelected = !SelectedDataIndices.Contains(FocusedDataIndex);
+	SetSelectedDataIndex(FocusedDataIndex, bNewSelected);
+}
+
 void UBaseStrategyWidget::NativeDestruct()
 {
 	Reset();
@@ -262,15 +347,16 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 
 	UE_LOG(LogStrategyUI, Verbose, TEXT("\nStarting UpdateEntryWidget for index %d,"), InGlobalIndex);
 	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
-
-	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
-
-	const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
-
+	
 	if (Widget->Implements<UStrategyEntryBase>())
 	{
+		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
+		const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+		const bool bIsFocused = DataIndex == FocusedDataIndex;
+		
 		// @TODO: Only call this if the item index has changed for this entry
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(Widget, Item);
+		IStrategyEntryBase::Execute_BP_OnItemFocusChanged(Widget, bIsFocused);
 	}
 }
 
@@ -342,7 +428,7 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 	}
 
 	// Gather all the indices we want to keep.
-	TSet<int32> DesiredIndices = GetLayoutStrategyChecked().ComputeDesiredIndices();
+	TSet<int32> DesiredIndices = GetLayoutStrategyChecked().ComputeDesiredGlobalIndices();
 
 	// Log the desired indices
 	FString DesiredIndicesStr;

@@ -45,7 +45,7 @@ public:
 	 * Returns the set of desired global indices to display.
 	 * Best to call UpdateVisibleWindow before this to ensure the window is up-to-date.
 	 */
-	virtual TSet<int32> ComputeDesiredIndices() { return TSet<int32>(); }
+	virtual TSet<int32> ComputeDesiredGlobalIndices() { return TSet<int32>(); }
 
 	/**
 	 * Computes the size of each entry widget in the layout.
@@ -54,8 +54,7 @@ public:
 
 	/**
 	 * Converts a global index into the actual item index.
-	 * This is mostly useful for handling virtualized entries in an infinite list (see spiral layout strategy for example).
-	 * Defaults to simply returning the given index as is sufficient for most basic layout strategies.
+	 * This is mostly useful for resolving data in an infinite list (see spiral layout strategy for example).
 	 */
 	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const { return INDEX_NONE; };
 	

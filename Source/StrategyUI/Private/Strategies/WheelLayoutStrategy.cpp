@@ -39,7 +39,7 @@ int32 UWheelLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
 	return GapPaddingSegments;
 }
 
-TSet<int32> UWheelLayoutStrategy::ComputeDesiredIndices()
+TSet<int32> UWheelLayoutStrategy::ComputeDesiredGlobalIndices()
 {
 	// Wheel layout has no concept of a "visible window" since all items are always visible
 	VisibleStartIndex = 0;

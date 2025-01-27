@@ -22,8 +22,10 @@ int32 USpiralLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
 	return GapPaddingSegments;
 }
 
-TSet<int32> USpiralLayoutStrategy::ComputeDesiredIndices()
+TSet<int32> USpiralLayoutStrategy::ComputeDesiredGlobalIndices()
 {
+	VisibleGlobalIndices.Empty(MaxVisibleEntries);
+
 	// We'll pick a window half on each side of the focused item.
 	const int32 HalfWindow = MaxVisibleEntries / 2;
 	VisibleStartIndex = FindFocusedGlobalIndexByAngle() - HalfWindow;
@@ -34,12 +36,11 @@ TSet<int32> USpiralLayoutStrategy::ComputeDesiredIndices()
 	const int32 ExtendedStart = VisibleStartIndex - NumDeactivatedEntries;
 	const int32 ExtendedEnd   = VisibleEndIndex + NumDeactivatedEntries;
 
-	TSet<int32> ExtendedIndices;
 	for (int32 i = ExtendedStart; i <= ExtendedEnd; ++i)
 	{
-		ExtendedIndices.Add(i);
+		VisibleGlobalIndices.Add(i);
 	}
-	return ExtendedIndices;
+	return VisibleGlobalIndices;
 }
 
 FVector2D USpiralLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)

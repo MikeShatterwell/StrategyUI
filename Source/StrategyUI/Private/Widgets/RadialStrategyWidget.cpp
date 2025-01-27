@@ -171,7 +171,7 @@ void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Dur
 	float FinalDuration = (Duration <= 0.f) ? World->GetDeltaSeconds() * 2.f : Duration;
 	bool bCrossedGap = false;
 	
-	const int32 CurrentIndex = DataFocusedIndex;
+	const int32 CurrentIndex = FocusedDataIndex;
 	int32 TargetDataIndex = (CurrentIndex + Delta) % GetItemCount();
 	if (TargetDataIndex < 0)
 	{
@@ -199,44 +199,13 @@ void URadialStrategyWidget::ResetInput()
 
 	RuntimeScrollingAnimState.bIsAnimating = false;
 	SetCurrentAngle(0.0f);
-	SetFocusedIndex(INDEX_NONE);
-	
-	GlobalFocusIndex = 0;
+	UpdateFocusedGlobalIndex(INDEX_NONE);
 }
 
 void URadialStrategyWidget::UpdateFocusIndex()
 {
 	const int32 NewGlobalFocusIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndexByAngle();
-	const int32 NewDataFocusIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(NewGlobalFocusIndex);
-
-	if (NewGlobalFocusIndex != GlobalFocusIndex)
-	{
-		GlobalFocusIndex = NewGlobalFocusIndex;
-	}
-	
-	if (NewDataFocusIndex != DataFocusedIndex)
-	{
-		SetFocusedIndex(NewDataFocusIndex);
-	}
-}
-
-void URadialStrategyWidget::SelectFocusedItem()
-{
-	if (DataFocusedIndex != INDEX_NONE)
-	{
-		OnItemSelected.Broadcast(DataFocusedIndex, Items[DataFocusedIndex]);
-	}
-}
-
-
-void URadialStrategyWidget::ScrollToDataIndex(const int32 DataIndex)
-{
-	if (Items.IsValidIndex(DataIndex))
-	{
-		const float TargetAngle = DataIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
-		SetCurrentAngle(TargetAngle);
-		SetFocusedIndex(DataIndex);
-	}
+	UpdateFocusedGlobalIndex(NewGlobalFocusIndex);
 }
 
 void URadialStrategyWidget::ScrollToItemAnimated(const int32 DataIndex, const float Duration)
@@ -250,17 +219,9 @@ void URadialStrategyWidget::ScrollToItemAnimated(const int32 DataIndex, const fl
 	BeginAngleAnimation(TargetAngle, Duration);
 }
 
-void URadialStrategyWidget::ScrollToAngle(const float Angle)
-{
-	SetCurrentAngle(Angle);
-
-	const int32 NewIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndexByAngle();
-	SetFocusedIndex(NewIndex);
-}
-
 void URadialStrategyWidget::ScrollToCenterOfFocusedWedge()
 {
-	if (DataFocusedIndex == INDEX_NONE || GetItemCount() == 0)
+	if (FocusedDataIndex == INDEX_NONE || GetItemCount() == 0)
 	{
 		return;
 	}
@@ -270,12 +231,12 @@ void URadialStrategyWidget::ScrollToCenterOfFocusedWedge()
 
 void URadialStrategyWidget::ScrollToCenterOfFocusedWedgeAnimated(const float Duration)
 {
-	if (DataFocusedIndex == INDEX_NONE || GetItemCount() == 0)
+	if (FocusedDataIndex == INDEX_NONE || GetItemCount() == 0)
 	{
 		return;
 	}
 
-	const float TargetAngle = DataFocusedIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
+	const float TargetAngle = FocusedDataIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
 	BeginAngleAnimation(TargetAngle, Duration);
 }
 
@@ -367,7 +328,7 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 	const int32 NumDeactivatedEntries = GetLayoutStrategyChecked<URadialLayoutStrategy>().NumDeactivatedEntries;
 
 	// @TODO: Clean this up
-	TSet<int32> DesiredIndices = GetLayoutStrategyChecked<URadialLayoutStrategy>().ComputeDesiredIndices();
+	TSet<int32> DesiredIndices = GetLayoutStrategyChecked<URadialLayoutStrategy>().ComputeDesiredGlobalIndices();
 	
 	const int32 VisibleStartIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetVisibleStartIndex();
 	const int32 VisibleEndIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetVisibleEndIndex();
@@ -386,7 +347,7 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 		const bool bValidData = Items.IsValidIndex(DataIndex);
 
 		// Focus check
-		const bool bIsFocused = (DataIndex == DataFocusedIndex);
+		const bool bIsFocused = (DataIndex == FocusedDataIndex && DataIndex != INDEX_NONE);
 			
 		// Draw debug item text
 		{
@@ -464,19 +425,6 @@ void URadialStrategyWidget::SetCurrentAngle(const float InNewAngle)
 	OnPointerRotationUpdated.Broadcast(FMath::UnwindDegrees(CurrentPointerAngle));
 }
 
-void URadialStrategyWidget::SetFocusedIndex(const int32 InFocusedIndex)
-{
-	DataFocusedIndex = InFocusedIndex;
-	if (DataFocusedIndex != INDEX_NONE && Items.IsValidIndex(DataFocusedIndex))
-	{
-		OnItemFocused.Broadcast(DataFocusedIndex, Items[DataFocusedIndex]);
-	}
-	else
-	{
-		OnItemFocused.Broadcast(INDEX_NONE, nullptr);
-	}
-}
-
 void URadialStrategyWidget::ApplyManualRotation(const float DeltaDegrees)
 {
 	if (!FMath::IsNearlyZero(DeltaDegrees))
@@ -508,6 +456,7 @@ void URadialStrategyWidget::SyncMaterialData() const
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
+	// @TODO: Iterate using AcquireEntryWidget() instead of touching the pool directly
 	for (UUserWidget* Widget : EntryWidgetPool.GetActiveWidgets())
 	{
 		const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
@@ -519,7 +468,7 @@ void URadialStrategyWidget::SyncMaterialData() const
 
 		const int32 GlobalIndex = *GlobalIndexKey;
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-		const bool bIsFocused = DataIndex == DataFocusedIndex;
+		const bool bIsFocused = DataIndex == FocusedDataIndex;
 		const FGameplayTag& ItemState = IndexToStateMap.FindChecked(GlobalIndex);
 
 		if (Widget->Implements<URadialItemEntry>())
@@ -538,15 +487,6 @@ void URadialStrategyWidget::SyncMaterialData() const
 void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 {
 	Super::PositionWidget(GlobalIndex);
-
-	/*
-	 * Since this radial widget's selection/focus is driven by rotating a pointer, we can assume the cursor
-	 * is captured by the viewport, and therefore we don't need to worry about physically moving the entries
-	 * around the screen for hit testing. Instead, we can keep them all centered and use the render transform
-	 * to move them around the center.
-	 *
-	 * By default, the Super:: will position the widget's center directly at the item position w/o any render transform.
-	 */
 	
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
@@ -560,26 +500,6 @@ void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	//CanvasSlot->SetPosition(Center);
 	//Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 	//Widget->SetRenderTranslation(LocalPos);
-}
-
-
-void URadialStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
-{
-	Super::UpdateEntryWidget(InGlobalIndex);
-
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	UE_LOG(LogStrategyUI, Verbose, TEXT("\nStarting UpdateEntryWidget for index %d,"), InGlobalIndex);
-	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
-
-	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
-	const bool bIsFocused = DataIndex == DataFocusedIndex;
-	
-	if (Widget->Implements<URadialItemEntry>())
-	{
-		// @TODO: Only call this if the focused index has changed, skip if the focus is the same
-		IRadialItemEntry::Execute_BP_OnItemFocusChanged(Widget, bIsFocused);
-	}
 }
 
 void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget, const int32 InGlobalIndex, const bool bIsFocused, FRadialItemMaterialData& OutMaterialData) const

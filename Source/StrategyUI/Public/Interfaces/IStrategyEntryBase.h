@@ -23,4 +23,13 @@ public:
 	/** Called when the widget is assigned new data */
 	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
 	void BP_OnStrategyEntryItemAssigned(const UObject* InItem);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	void BP_OnItemSelectionChanged(bool bIsSelected);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	void BP_OnItemFocusChanged(bool bIsFocused);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	void BP_NotifyEntryClicked();
 };

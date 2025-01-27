@@ -11,14 +11,10 @@ struct FRadialItemMaterialData;
 class URadialLayoutStrategy;
 class UBaseStrategyWidget;
 
-// Delegate for when a radial item gains focus.
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRadialItemFocusedDelegate, int32, Index, UObject*, Item);
+
 
 // Delegate for when the radial pointer's rotation angle updates.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRadialPointerRotationUpdatedDelegate, float, Angle);
-
-// Delegate for when a radial item is clicked or selected.
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRadialItemClickedDelegate, int32, Index, UObject*, Item);
 
 
 // Holds all data needed for animating a scroll from one angle to another.
@@ -77,7 +73,6 @@ public:
 	// BaseStrategyWidget API Overrides
 	// ---------------------------------------------------------------------------------------------
 	virtual void SetItems(const TArray<UObject*>& InItems) override;
-	virtual void UpdateEntryWidget(int32 InGlobalIndex) override;
 	virtual void PositionWidget(int32 GlobalIndex) override;
 	
 	// ---------------------------------------------------------------------------------------------
@@ -97,10 +92,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
 	void ResetInput();
 	void UpdateFocusIndex();
-
-	/** Selects the currently-focused item (if any). */
-	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
-	void SelectFocusedItem();
 	
 	/** Adds a rotation delta equal to a single item to the current pointer angle. */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget")
@@ -108,9 +99,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void StepIndexAnimated(int32 Delta, const float Duration = 0.0f);
-	
-	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
-	void ScrollToDataIndex(int32 DataIndex);
 
 	/**
 	 * Animate the pointer angle until it aligns with a particular ItemIndex's wedge center.
@@ -119,9 +107,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|RadialStrategyWidget|Animation")
 	void ScrollToItemAnimated(int32 DataIndex, float Duration);
-
-	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
-	void ScrollToAngle(float Angle);
 
 	/** Re-center the pointer on the currently focused item. */
 	UFUNCTION(BlueprintCallable, Category = "StrategyUI|RadialStrategyWidget")
@@ -156,18 +141,10 @@ protected:
 #pragma endregion Debug Drawing
 
 
-#pragma region Events
-	/** Broadcasts when an item is focused (hovered) by the pointer. */
-	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
-	FRadialItemFocusedDelegate OnItemFocused;
-
+#pragma region Events	
 	/** Broadcasts the current pointer angle when it changes (in degrees [-180..180]). */
 	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
 	FRadialPointerRotationUpdatedDelegate OnPointerRotationUpdated;
-
-	/** Broadcasts when the focused item is selected via SelectFocusedItem(). */
-	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
-	FRadialItemClickedDelegate OnItemSelected;
 #pragma endregion Events
 
 
@@ -187,15 +164,6 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
 	float CurrentPointerAngle = 0.f;
 	void SetCurrentAngle(const float InNewAngle);
-	
-	/** Currently-focused item index (in the entire data Items array). INDEX_NONE (-1) if invalid. */
-	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
-	int32 DataFocusedIndex = INDEX_NONE;
-	void SetFocusedIndex(const int32 InFocusedIndex);
-	
-	/** Used when in spiral mode to store the item index without being constrained by data indexes. Can be negative or exceed the number of Items */
-	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Pointer", meta=(AllowPrivateAccess="true"))
-	int32 GlobalFocusIndex = INDEX_NONE;
 
 	/** Stores all scroll animation parameters. */
 	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Animation", meta=(AllowPrivateAccess="true"))

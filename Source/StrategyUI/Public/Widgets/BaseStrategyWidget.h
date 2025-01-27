@@ -10,6 +10,12 @@ class UBaseLayoutStrategy;
 class UUserWidget;
 class UCanvasPanel;
 
+// Delegate broadcast when an item gains focus. Provides the index and the data item object implementing UStrategyInteractiveEntry.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemFocusedDelegate, int32, Index, UObject*, Item);
+
+// Delegate broadcast when an item is clicked or selected. Provides the index and the data item object implementing UStrategyInteractiveEntry.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemSelectedDelegate, int32, Index, UObject*, Item);
+
 /**
  * A generic container widget that supports a "layout strategy" object.
  * Can be used for radials layouts, floating markers, or any arbitrary layout that the strategy computes.
@@ -36,8 +42,9 @@ public:
 #endif
 
 	/**
-	 * Strategy object used for laying out items in a radial pattern.
-	 * Set to a subclass of UBaseLayoutStrategy and override virtual functions as needed to customize behavior.
+	 * Strategy object used for laying out items according to abstract rules.
+	 * 
+	 * Assign to a subclass of UBaseLayoutStrategy and override virtual functions as needed to customize behavior.
 	 * Included by default are URadialWheelLayoutStrategy and URadialSpiralLayoutStrategy.
 	 *
 	 * @TODO: Floating marker widget strategy
@@ -83,6 +90,16 @@ public:
 	virtual void SetItems(const TArray<UObject*>& InItems);
 	
 	virtual void Reset();
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Focus")
+	virtual void UpdateFocusedGlobalIndex(int32 InNewGlobalFocusIndex);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
+	virtual void SetSelectedDataIndex(int32 InDataIndex, bool bShouldBeSelected);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
+	virtual void ToggleFocusedIndex();
+
 #pragma endregion Public API
 
 protected:
@@ -153,6 +170,33 @@ protected:
 	 */
 	UPROPERTY(Transient)
 	TMap<int32, FGameplayTag> IndexToStateMap;
+
+	//----------------------------------------------------------------------------------------------
+	// Focus & Selection
+	//----------------------------------------------------------------------------------------------
+	/*
+	 * May contain multiple data indices if the widget supports multi-select.
+	 * Otherwise it will only contain a single index. 
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|Selection")
+	TSet<int32> SelectedDataIndices;
+
+	/** Currently focused item index without being constrained by data indexes. Can be negative or exceed the number of Items. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|Selection")
+	int32 FocusedGlobalIndex = INDEX_NONE;
+
+	/** Currently focused item index (in the entire data Items array). INDEX_NONE (-1) if invalid. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|Selection")
+	int32 FocusedDataIndex = INDEX_NONE;
+
+	/** Broadcasts when an item is considered focused (hovered) by this widget. */
+	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
+	FStrategyItemFocusedDelegate OnItemFocused;
+	
+	/** Broadcasts when the focused item is selected (clicked) by this widget. */
+	UPROPERTY(BlueprintAssignable, Category="StrategyUI|RadialStrategyWidget|Event")
+	FStrategyItemSelectedDelegate OnItemSelected;
+	// @TODO: Add OnItemDeselected, etc. Update when we have entry-to-container selection support.
 
 	//----------------------------------------------------------------------------------------------
 	// Bound Widgets
