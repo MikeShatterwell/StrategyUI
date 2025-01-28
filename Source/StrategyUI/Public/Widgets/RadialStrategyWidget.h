@@ -73,7 +73,7 @@ public:
 	// ---------------------------------------------------------------------------------------------
 	// BaseStrategyWidget API Overrides
 	// ---------------------------------------------------------------------------------------------
-	virtual void SetItems(const TArray<UObject*>& InItems) override;
+	virtual void SetItems_Implementation(const TArray<UObject*>& InItems) override;
 	virtual void PositionWidget(int32 GlobalIndex) override;
 	
 	// ---------------------------------------------------------------------------------------------

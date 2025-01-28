@@ -50,9 +50,9 @@ void URadialStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent&
 #endif
 
 #pragma region Public API
-void URadialStrategyWidget::SetItems(const TArray<UObject*>& InItems)
+void URadialStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
 {
-	Super::SetItems(InItems);
+	Super::SetItems_Implementation(InItems);
 
 	ResetInput();
 }
@@ -495,86 +495,145 @@ void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
 	check(CanvasSlot);
 
-	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+	// Grab the strategy’s recommended entry size (matching the wedge data!)
+	const FVector2D& DesiredSize = GetLayoutStrategyChecked().ComputeEntryWidgetSize(GlobalIndex);
+	CanvasSlot->SetAutoSize(false);
+	CanvasSlot->SetSize(DesiredSize);
 
-	//CanvasSlot->SetPosition(Center + LocalPos); // Radial entries are positioned at the center of the radius...
-	// ... Or use render transform to move the widget into positions:
-	
-	CanvasSlot->SetPosition(Center);
+	// Position entries at the canvas center
+	if (CanvasSlot->GetPosition() != Center)
+	{
+		CanvasSlot->SetPosition(Center);
+	}
+
 	Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+
+	// Offset with render transforms
+	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
 	Widget->SetRenderTranslation(LocalPos);
 }
 
-void URadialStrategyWidget::ConstructMaterialData(const UUserWidget* EntryWidget, const int32 InGlobalIndex, const bool bIsFocused, FRadialItemMaterialData& OutMaterialData) const
+void URadialStrategyWidget::ConstructMaterialData(
+	const UUserWidget* EntryWidget,
+	const int32 InGlobalIndex,
+	const bool bIsFocused,
+	FRadialItemMaterialData& OutMaterialData
+) const
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
+	// -------------------------------------------------------------------
+	// 1) Compute radial angles (same as before)
+	// -------------------------------------------------------------------
 	const float ItemAngleDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>()
-		.CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
-	
-	// 1) Figure out angles (in normalized 0..1). E.g.:
-	// Subtract half a wedge from that final angle
-	const float RawStartDeg = ItemAngleDeg - (GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing() * 0.5f);
-	
-	// A helper to clamp angle into [0..360)
-	auto ClampAngle0To360 = [](float A) {
+							   .CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
+
+	const float AngularSpacing = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
+	const float HalfWedge      = AngularSpacing * 0.5f;
+	const float RawStartDeg    = ItemAngleDeg - HalfWedge;
+
+	auto ClampAngle0To360 = [](float A)
+	{
 		A = FMath::Fmod(A, 360.f);
 		if (A < 0.f) A += 360.f;
 		return A;
 	};
 	const float StartDeg = ClampAngle0To360(RawStartDeg);
 
-	const float Gap = DynamicWedgeGapSize; // small gap between wedges
+	// Subtract gap from the wedge
+	const float Gap     = DynamicWedgeGapSize; 
 	const float HalfGap = Gap * 0.5f;
-
 	const float GappedStartDeg = StartDeg + HalfGap;
-	const float WedgeWidthDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing() - Gap;
+	const float WedgeWidthDeg  = AngularSpacing - Gap;
 
-	// 2) We pass "AngleOffset" and "WedgeWidth" to the material
+	// Convert angles to [0..1] for the material
 	const float AngleOffsetN = GappedStartDeg / 360.f;
-	const float WedgeWidthN  = WedgeWidthDeg / 360.f;
+	const float WedgeWidthN  = WedgeWidthDeg  / 360.f;
 
-	// 3) Spiral center -> local UV 
-	const FVector2D SpiralCenterAbs     = GetCachedGeometry().LocalToAbsolute(Center);
-	const FGeometry EntryGeo              = EntryWidget->GetCachedGeometry();
-	const FVector2D SpiralCenterLocal   = EntryGeo.AbsoluteToLocal(SpiralCenterAbs);
-	const FVector2D EntrySize           = EntryGeo.GetLocalSize();
-
-	float UVCenterX = 0.5f;
-	float UVCenterY = 0.5f;
-	if (EntrySize.X > KINDA_SMALL_NUMBER && EntrySize.Y > KINDA_SMALL_NUMBER)
-	{
-		UVCenterX = SpiralCenterLocal.X / EntrySize.X;
-		UVCenterY = SpiralCenterLocal.Y / EntrySize.Y;
-	}
-
-	// 4) DistanceFactor used for the radius calculation
-	const float DistanceFactor = GetLayoutStrategyChecked<URadialLayoutStrategy>().CalculateDistanceFactorForGlobalIndex(InGlobalIndex);
-	
-	// 5) Calculate the inner/outer radius
-	const float MinRadius = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMinRadius(); // in px
-	const float MaxRadius = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMaxRadius(); // in px
-
-	float HalfEntryDim = FMath::Min(EntrySize.X, EntrySize.Y);// * 0.5f;
-
+	// -------------------------------------------------------------------
+	// 2) Figure out the wedge’s desired “widget size” 
+	//    (the size you assigned in PositionWidget).
+	// -------------------------------------------------------------------
+	const FVector2D EntrySize = GetLayoutStrategyChecked()
+								.ComputeEntryWidgetSize(InGlobalIndex);
+	// We'll use this same size below to compute radius in normalized [0..1].
+	float HalfEntryDim = FMath::Min(EntrySize.X, EntrySize.Y);
 	if (HalfEntryDim < KINDA_SMALL_NUMBER)
 	{
 		HalfEntryDim = 1.f;
 	}
-	
-	const float SpiralMinRadiusN = MinRadius / HalfEntryDim;
-	const float SpiralMaxRadiusN = MaxRadius / HalfEntryDim;
-	
-	// 6) Fill the struct with the final data
+
+	// -------------------------------------------------------------------
+	// 3) Manually compute the container center in this widget’s local coords
+	// -------------------------------------------------------------------
+	float UVCenterX = 0.5f;
+	float UVCenterY = 0.5f;
+
+	if (UUserWidget* NonConstWidget = const_cast<UUserWidget*>(EntryWidget))
+	{
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(NonConstWidget->Slot))
+		{
+			// The slot’s position in the container
+			const FVector2D SlotPos = CanvasSlot->GetPosition();
+
+			// The slot size we set:
+			//   (You could also just rely on the same "EntrySize" from above
+			//    but let's read it in case you do something dynamic.)
+			const FVector2D SlotSize = CanvasSlot->GetSize();
+
+			// The pivot we set for the widget’s transform
+			const FVector2D Pivot = NonConstWidget->GetRenderTransformPivot();
+
+			// The "translation" from the widget’s render transform
+			// (assuming no rotation or scale in RenderTransform):
+			const FVector2D RenderTranslation = NonConstWidget->GetRenderTransform().Translation;
+
+			// Where does the widget’s top-left corner end up in container coords?
+			// top-left = SlotPos - (Pivot * SlotSize) + RenderTranslation
+			const FVector2D WidgetTopLeftInContainer =
+				SlotPos
+				- (Pivot * SlotSize)
+				+ RenderTranslation;
+
+			// Then the container center (URadialStrategyWidget::Center) 
+			// minus that top-left => center in *widget local space*:
+			const FVector2D CenterInWidgetLocal = 
+				Center - WidgetTopLeftInContainer;
+
+			// Finally, to convert from local pixel coords -> UV [0..1], 
+			// we divide by the widget’s size:
+			if (SlotSize.X > KINDA_SMALL_NUMBER && SlotSize.Y > KINDA_SMALL_NUMBER)
+			{
+				UVCenterX = CenterInWidgetLocal.X / SlotSize.X;
+				UVCenterY = CenterInWidgetLocal.Y / SlotSize.Y;
+			}
+		}
+	}
+
+	// -------------------------------------------------------------------
+	// 4) Distance factor & radial extents
+	// -------------------------------------------------------------------
+	const float DistanceFactor = GetLayoutStrategyChecked<URadialLayoutStrategy>()
+								 .CalculateDistanceFactorForGlobalIndex(InGlobalIndex);
+
+	const float MinRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMinRadius();
+	const float MaxRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMaxRadius();
+
+	const float SpiralMinRadiusN = MinRadiusPx / HalfEntryDim;
+	const float SpiralMaxRadiusN = MaxRadiusPx / HalfEntryDim;
+
+	// -------------------------------------------------------------------
+	// 5) Fill in the final material data
+	// -------------------------------------------------------------------
 	FRadialItemMaterialData MatData;
-	MatData.UVCenterX          = UVCenterX;
-	MatData.UVCenterY          = UVCenterY;
-	MatData.WedgeWidth         = WedgeWidthN;
-	MatData.AngleOffset        = AngleOffsetN;
-	MatData.SpiralMinRadius    = SpiralMinRadiusN;
-	MatData.SpiralMaxRadius    = SpiralMaxRadiusN;
-	MatData.DistanceFactor     = DistanceFactor;
-	MatData.bIsFocused         = bIsFocused;
+	MatData.UVCenterX       = UVCenterX;
+	MatData.UVCenterY       = UVCenterY;
+	MatData.WedgeWidth      = WedgeWidthN;
+	MatData.AngleOffset     = AngleOffsetN;
+	MatData.SpiralMinRadius = SpiralMinRadiusN;
+	MatData.SpiralMaxRadius = SpiralMaxRadiusN;
+	MatData.DistanceFactor  = DistanceFactor;
+	MatData.bIsFocused      = bIsFocused;
 
 	OutMaterialData = MatData;
 }

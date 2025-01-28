@@ -47,19 +47,6 @@ TSet<int32> USpiralLayoutStrategy::ComputeDesiredGlobalIndices()
 FVector2D USpiralLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)
 {
 	return FVector2D((BaseRadius + SpiralOutwardOffset) * 2.f);
-	/*const float DistanceFactor = CalculateDistanceFactorForGlobalIndex(GlobalIndex);
-
-	// We'll linearly shrink or grow from 1.0x to 0.6x:
-	const float Scale = FMath::Lerp(0.6f, 1.0f, DistanceFactor);
-
-	const float InnerAbs = FMath::Abs(SpiralInwardOffset);
-	const float OuterAbs = FMath::Abs(SpiralOutwardOffset);
-	const float MaxExtent = FMath::Max(InnerAbs, OuterAbs);
-
-	// This might still clip the wedge if Scale < 1.0, so weigh that carefully:
-	const float Dimension = (BaseRadius + MaxExtent) * 2.f * Scale;
-
-	return FVector2D(Dimension, Dimension);*/
 }
 
 FVector2D USpiralLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const

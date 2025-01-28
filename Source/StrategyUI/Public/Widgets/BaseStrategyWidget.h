@@ -87,9 +87,11 @@ public:
 	 * These data objects will be passed via IStrategyEntryBase interface to the EntryWidgetClass.
 	 * Then UpdateLayout() will be called automatically to build the visual layout.
 	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "StrategyUI|BaseStrategyWidget")
+	void SetItems(const TArray<UObject*>& InItems);
+	virtual void SetItems_Implementation(const TArray<UObject*>& InItems);
+
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
-	virtual void SetItems(const TArray<UObject*>& InItems);
-	
 	virtual void Reset();
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Focus")

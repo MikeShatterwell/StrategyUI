@@ -245,7 +245,7 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 	UpdateVisibleWidgets();
 }
 
-void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
+void UBaseStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
 {
 	Items = InItems;
 
