@@ -96,7 +96,7 @@ public:
 	virtual void UpdateFocusedGlobalIndex(int32 InNewGlobalFocusIndex);
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
-	virtual void SetSelectedDataIndex(int32 InDataIndex, bool bShouldBeSelected);
+	virtual void SetSelectedGlobalIndex(int32 InGlobalIndex, bool bShouldBeSelected);
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
 	virtual void ToggleFocusedIndex();
@@ -132,15 +132,18 @@ protected:
 	virtual UUserWidget* AcquireEntryWidget(int32 GlobalIndex);
 
 	/** Release an entry widget back to the pool if no longer needed. */
-	virtual void ReleaseEntryWidget(int32 Index);
+	virtual void ReleaseEntryWidget(int32 GlobalIndex);
 
 	virtual void ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndices);
 
 	/** Called when building or updating the entry widget for item at 'Index'. */
 	virtual void UpdateEntryWidget(int32 InGlobalIndex);
 	
-	virtual void NotifyStrategyEntryStateChange(int32 GlobalIndex, UUserWidget* Widget, const FGameplayTag& OldState, const FGameplayTag& NewState);
+	virtual void NotifyStrategyEntryStateChange(int32 GlobalIndex, UUserWidget* Widget, const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState);
 	virtual void TryHandlePooledEntryStateTransition(int32 GlobalIndex);
+	
+	virtual void UpdateEntryLifecycleTagState(const int32 GlobalIndex, const FGameplayTag& NewStateTag);
+	virtual void UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, const bool bEnable);
 
 	virtual void UpdateVisibleWidgets();
 
@@ -170,7 +173,7 @@ protected:
 	 * This is used to track whether an item is pooled, deactivated, or active.
 	 */
 	UPROPERTY(Transient)
-	TMap<int32, FGameplayTag> IndexToStateMap;
+	TMap<int32, FGameplayTagContainer> IndexToTagStateMap;
 
 	//----------------------------------------------------------------------------------------------
 	// Focus & Selection

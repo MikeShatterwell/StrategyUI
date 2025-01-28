@@ -18,7 +18,7 @@ class IStrategyEntryBase : public IInterface
 public:
 	/** Called when this entry widget transitions states. */
 	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
-	void BP_OnStrategyEntryStateChanged(const FGameplayTag& OldState, const FGameplayTag& NewState);
+	void BP_OnStrategyEntryStateTagsChanged(const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState);
 
 	/** Called when the widget is assigned new data */
 	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")

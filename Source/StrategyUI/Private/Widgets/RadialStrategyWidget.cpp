@@ -472,13 +472,14 @@ void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 	const int32 GlobalIndex = *GlobalIndexKey;
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
 	const bool bIsFocused = DataIndex == FocusedDataIndex;
-	const FGameplayTag& ItemState = IndexToStateMap.FindChecked(GlobalIndex);
+	const FGameplayTagContainer& ItemState = IndexToTagStateMap.FindChecked(GlobalIndex);
 
 	if (Widget->Implements<URadialItemEntry>())
 	{
-		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI_EntryState_Active;
-		if (ItemState == ActiveState)
+		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
+		if (ItemState.HasTag(ActiveState))
 		{
+			// Only update material data for active entries 
 			FRadialItemMaterialData MaterialData;
 			ConstructMaterialData(Widget, GlobalIndex, bIsFocused, MaterialData);
 			IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);

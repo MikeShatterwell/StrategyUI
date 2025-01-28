@@ -6,7 +6,21 @@
 
 namespace StrategyUIGameplayTags
 {
-	TAG(StrategyUI_EntryState_Pooled);
-	TAG(StrategyUI_EntryState_Deactivated);
-	TAG(StrategyUI_EntryState_Active);
+	namespace StrategyUI
+	{
+		namespace EntryLifecycle
+		{
+			TAG(Parent);
+			TAG(Pooled);
+			TAG(Deactivated);
+			TAG(Active);
+		}
+
+		namespace EntryInteraction
+		{
+			TAG(Parent);
+			TAG(Focused);
+			TAG(Selected);
+		}
+	}
 }

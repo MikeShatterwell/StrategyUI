@@ -74,7 +74,7 @@ void UBaseStrategyWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
-	IndexToStateMap.Reserve(MaxVisibleEntries);
+	IndexToTagStateMap.Reserve(MaxVisibleEntries);
 	IndexToWidgetMap.Reserve(MaxVisibleEntries);
 }
 
@@ -97,15 +97,15 @@ void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusI
 		return; // No change
 	}
 
+	const FGameplayTag& FocusedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
+
 	// Unfocus old
-	if (FocusedGlobalIndex != INDEX_NONE)
+	if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
 	{
-		if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+		if (OldEntry->Implements<UStrategyEntryBase>())
 		{
-			if (OldEntry->Implements<UStrategyEntryBase>())
-			{
-				IStrategyEntryBase::Execute_BP_OnItemFocusChanged(OldEntry, /*bIsFocused=*/ false);
-			}
+			constexpr bool bIsFocused = false;
+			UpdateEntryInteractionTagState(FocusedGlobalIndex, FocusedState, bIsFocused);
 		}
 	}
 
@@ -124,55 +124,65 @@ void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusI
 	}
 
 	// Focus new
-	if (FocusedGlobalIndex != INDEX_NONE)
+	if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
 	{
-		if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+		if (OldEntry->Implements<UStrategyEntryBase>())
 		{
-			if (OldEntry->Implements<UStrategyEntryBase>())
-			{
-				IStrategyEntryBase::Execute_BP_OnItemFocusChanged(OldEntry, /*bIsFocused=*/ true);
-			}
+			constexpr bool bIsFocused = true;
+			UpdateEntryInteractionTagState(FocusedGlobalIndex, FocusedState, bIsFocused);
 		}
 	}
 }
 
-void UBaseStrategyWidget::SetSelectedDataIndex(const int32 InDataIndex, const bool bShouldBeSelected)
+void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, const bool bShouldBeSelected)
 {
-	const bool bAlreadySelected = SelectedDataIndices.Contains(InDataIndex);
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
+	if (DataIndex == INDEX_NONE)
+	{
+		// Selected a gap between items
+		return;
+	}
+	const bool bAlreadySelected = SelectedDataIndices.Contains(DataIndex);
+	
+	const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
+
+	for (auto& Pair : IndexToWidgetMap)
+	{
+		const int32 MappedGlobalIndex = Pair.Key;
+		const UUserWidget* Widget = Pair.Value.Get();
+		if (!Widget)
+		{
+			continue;
+		}
+
+		const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
+		if (MappedDataIndex == DataIndex)
+		{
+			// Apply or remove the “selected” tag
+			UpdateEntryInteractionTagState(MappedGlobalIndex, SelectedState, bShouldBeSelected);
+		}
+	}
 	
 	if (bShouldBeSelected && !bAlreadySelected)
 	{
-		SelectedDataIndices.Add(InDataIndex);
+		SelectedDataIndices.Add(DataIndex);
+		UpdateEntryInteractionTagState(InGlobalIndex, SelectedState, /*bEnable=*/ true);
 
-		// Broadcast new selection
-		UObject* Item = Items.IsValidIndex(InDataIndex) ? Items[InDataIndex] : nullptr;
-		OnItemSelected.Broadcast(InDataIndex, Item);
-		
-		if (UUserWidget* Entry = AcquireEntryWidget(InDataIndex))
-		{
-			if (Entry->Implements<UStrategyEntryBase>())
-			{
-				IStrategyEntryBase::Execute_BP_OnItemSelectionChanged(Entry, /*bIsSelected=*/ true);
-			}
-		}
+		// Broadcast new data selection
+		UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+		OnItemSelected.Broadcast(DataIndex, Item);
 	}
 	else if (!bShouldBeSelected && bAlreadySelected)
 	{
-		SelectedDataIndices.Remove(InDataIndex);
-		if (UUserWidget* Entry = AcquireEntryWidget(InDataIndex))
-		{
-			if (Entry->Implements<UStrategyEntryBase>())
-			{
-				IStrategyEntryBase::Execute_BP_OnItemSelectionChanged(Entry, /*bIsSelected=*/ false);
-			}
-		}
+		SelectedDataIndices.Remove(DataIndex);
+		UpdateEntryInteractionTagState(InGlobalIndex, SelectedState, /*bEnable=*/ false);
 	}
 }
 
 void UBaseStrategyWidget::ToggleFocusedIndex()
 {
 	const bool bNewSelected = !SelectedDataIndices.Contains(FocusedDataIndex);
-	SetSelectedDataIndex(FocusedDataIndex, bNewSelected);
+	SetSelectedGlobalIndex(FocusedGlobalIndex, bNewSelected);
 }
 
 void UBaseStrategyWidget::NativeDestruct()
@@ -270,21 +280,29 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 
 	UE_LOG(LogStrategyUI, Verbose, TEXT("Creating new widget %s for global index %d"), *NewWidget->GetName(), GlobalIndex);
 	IndexToWidgetMap.Add(GlobalIndex, NewWidget);
-
+	
 	// If the index isn’t in IndexStateMap yet, give it an initial state:
-	if (!IndexToStateMap.Contains(GlobalIndex))
+	if (!IndexToTagStateMap.Contains(GlobalIndex))
 	{
-		const FGameplayTag& InitialEntryState = StrategyUIGameplayTags::StrategyUI_EntryState_Pooled;
-		IndexToStateMap.Add(GlobalIndex, InitialEntryState);
+		FGameplayTagContainer InitialStateContainer;
+		InitialStateContainer.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
+		IndexToTagStateMap.Add(GlobalIndex, InitialStateContainer);
 
 		if (NewWidget->Implements<UStrategyEntryBase>())
 		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(NewWidget, FGameplayTag(), InitialEntryState);
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(NewWidget, FGameplayTagContainer(), InitialStateContainer);
 		}
 	}
 
-	// Assign the data to the widget
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
+	if (SelectedDataIndices.Contains(DataIndex))
+	{
+		const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
+		constexpr bool bIsSelected = true;
+		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, bIsSelected);
+	}
+
+	// Assign the data to the widget
 	if (Items.IsValidIndex(DataIndex))
 	{
 		const UObject* Item = Items[DataIndex];
@@ -297,11 +315,11 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	return NewWidget;
 }
 
-void UBaseStrategyWidget::ReleaseEntryWidget(const int32 Index)
+void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	if (const TWeakObjectPtr<UUserWidget>* Ptr = IndexToWidgetMap.Find(Index))
+	if (const TWeakObjectPtr<UUserWidget>* Ptr = IndexToWidgetMap.Find(GlobalIndex))
 	{
 		if (Ptr->IsValid())
 		{
@@ -310,21 +328,29 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 Index)
 				// Return to pool
 				EntryWidgetPool.Release(Widget);
 
-				UE_LOG(LogStrategyUI, Verbose, TEXT("Released widget for index %d"), Index);
-				
-				if (Widget->Implements<UStrategyEntryBase>() && IndexToStateMap.Contains(Index))
+				UE_LOG(LogStrategyUI, Verbose, TEXT("Released widget for global index %d"), GlobalIndex);
+
+				// Clear old tags
+				if (IndexToTagStateMap.Contains(GlobalIndex))
 				{
-					const FGameplayTag& OldState = IndexToStateMap[Index];
-					const FGameplayTag& NewState = StrategyUIGameplayTags::StrategyUI_EntryState_Pooled;
-					// Tell the widget it's being pooled
-					IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(Widget, OldState, NewState);
+					FGameplayTagContainer OldState = IndexToTagStateMap[GlobalIndex];
+					FGameplayTagContainer PooledState;
+					PooledState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
+
+					// Tell the entry widget it’s becoming “pooled”
+					if (Widget->Implements<UStrategyEntryBase>())
+					{
+						IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
+							Widget, OldState, PooledState
+						);
+					}
 				}
 			}
 		}
 
 		// Remove from the maps as we no longer track this index
-		IndexToWidgetMap.Remove(Index);
-		IndexToStateMap.Remove(Index);
+		IndexToWidgetMap.Remove(GlobalIndex);
+		IndexToTagStateMap.Remove(GlobalIndex);
 	}
 }
 
@@ -352,42 +378,129 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 	{
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
 		const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
-		const bool bIsFocused = DataIndex == FocusedDataIndex;
 		
 		// @TODO: Only call this if the item index has changed for this entry
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(Widget, Item);
-		IStrategyEntryBase::Execute_BP_OnItemFocusChanged(Widget, bIsFocused);
 	}
 }
 
-void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex, UUserWidget* Widget, const FGameplayTag& OldState, const FGameplayTag& NewState)
+void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex, UUserWidget* Widget, const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState)
 {
 	// Check for transitions and update the state if there was a change
 	if (NewState != OldState)
 	{
-		IndexToStateMap[GlobalIndex] = NewState;
+		IndexToTagStateMap[GlobalIndex] = NewState;
 
 		// Tell the entry widget it changed states
 		if (Widget->Implements<UStrategyEntryBase>())
 		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateChanged(Widget, OldState, NewState);
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldState, NewState);
 		}
 	}
 }
 
 void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 GlobalIndex)
 {
-	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
 	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
-
-	// Grab old & new states
-	const FGameplayTag& OldState = IndexToStateMap.FindRef(GlobalIndex);
-	ensureMsgf(OldState.IsValid(), TEXT("Invalid state for index %d, make sure we always have a valid state tag!"), GlobalIndex);
 	
-	const FGameplayTag& NewState = bShouldBeVisible ?	StrategyUIGameplayTags::StrategyUI_EntryState_Active : StrategyUIGameplayTags::StrategyUI_EntryState_Deactivated;
+	FGameplayTag NewState;
+	if (bShouldBeVisible)
+	{
+		NewState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
+	}
+	else
+	{
+		NewState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
+	}
 
-	NotifyStrategyEntryStateChange(GlobalIndex, Widget, OldState, NewState);
+	UpdateEntryLifecycleTagState(GlobalIndex, NewState);
 }
+
+void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, const FGameplayTag& NewStateTag)
+{
+	// Validate that the new tag is a child of "StrategyUI.EntryState"
+	const FGameplayTag& EntryLifecycleParent = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Parent;
+	if (!NewStateTag.MatchesTag(EntryLifecycleParent))
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("Invalid EntryState tag: %s"), *NewStateTag.ToString());
+		return;
+	}
+
+	// Get the container for this index
+	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
+	FGameplayTagContainer OldTags = TagContainer;
+
+	// Remove all existing EntryLifecycle tags since they're mutually exclusive
+	TArray<FGameplayTag> TagsToRemove;
+	for (const FGameplayTag& ExistingTag : TagContainer)
+	{
+		if (ExistingTag.MatchesTag(EntryLifecycleParent))
+		{
+			TagsToRemove.Add(ExistingTag);
+		}
+	}
+	for (const FGameplayTag& TagToRemove : TagsToRemove)
+	{
+		TagContainer.RemoveTag(TagToRemove);
+	}
+
+	// Add the new status tag
+	TagContainer.AddTag(NewStateTag);
+
+	// Notify the widget of the change
+	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
+	{
+		if (Widget->Implements<UStrategyEntryBase>())
+		{
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldTags, TagContainer);
+		}
+	}
+}
+
+void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, const bool bEnable)
+{
+	const FGameplayTag& EntryInteractionParent = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Parent;
+
+	if (!InteractionTag.MatchesTag(EntryInteractionParent))
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("Invalid EntryInteraction tag: %s"), *InteractionTag.ToString());
+		return;
+	}
+
+	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
+	FGameplayTagContainer OldTags = TagContainer;
+
+	if (bEnable)
+	{
+		TagContainer.AddTag(InteractionTag);
+	}
+	else
+	{
+		TagContainer.RemoveTag(InteractionTag);
+	}
+
+	// Notify the widget
+	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
+	{
+		if (Widget->Implements<UStrategyEntryBase>())
+		{
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldTags, TagContainer);
+
+			const FGameplayTag& FocusedTag = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
+			const FGameplayTag& SelectedTag = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
+
+			if (InteractionTag == FocusedTag)
+			{
+				IStrategyEntryBase::Execute_BP_OnItemFocusChanged(Widget, bEnable);
+			}
+			else if (InteractionTag == SelectedTag)
+			{
+				IStrategyEntryBase::Execute_BP_OnItemSelectionChanged(Widget, bEnable);
+			}
+		}
+	}
+}
+
 
 void UBaseStrategyWidget::UpdateVisibleWidgets()
 {
