@@ -58,7 +58,7 @@ public:
 	 * Draws debug visuals for the spiral layout.
 	 * - Inherits circles from the parent radial strategy
 	 * - Adds additional circles for SpiralOutwardOffset/SpiralInwardOffset
-	 * - Draws a yellow line sampling the spiral path itself
+	 * - Draws a grey and yellow line sampling the spiral path itself
 	 */
 	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry,
 		FSlateWindowElementList& OutDrawElements,

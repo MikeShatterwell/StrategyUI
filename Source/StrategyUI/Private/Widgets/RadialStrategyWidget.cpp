@@ -523,10 +523,9 @@ void URadialStrategyWidget::ConstructMaterialData(
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	// -------------------------------------------------------------------
-	// 1) Compute radial angles (same as before)
+	// 1) Compute radial angles
 	// -------------------------------------------------------------------
-	const float ItemAngleDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>()
-							   .CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
+	const float ItemAngleDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>().CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
 
 	const float AngularSpacing = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
 	const float HalfWedge      = AngularSpacing * 0.5f;
@@ -552,10 +551,9 @@ void URadialStrategyWidget::ConstructMaterialData(
 
 	// -------------------------------------------------------------------
 	// 2) Figure out the wedge’s desired “widget size” 
-	//    (the size you assigned in PositionWidget).
+	//    (the size assigned in PositionWidget).
 	// -------------------------------------------------------------------
-	const FVector2D EntrySize = GetLayoutStrategyChecked()
-								.ComputeEntryWidgetSize(InGlobalIndex);
+	const FVector2D EntrySize = GetLayoutStrategyChecked().ComputeEntryWidgetSize(InGlobalIndex);
 	// We'll use this same size below to compute radius in normalized [0..1].
 	float HalfEntryDim = FMath::Min(EntrySize.X, EntrySize.Y);
 	if (HalfEntryDim < KINDA_SMALL_NUMBER)
@@ -568,53 +566,33 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// -------------------------------------------------------------------
 	float UVCenterX = 0.5f;
 	float UVCenterY = 0.5f;
-
-	if (UUserWidget* NonConstWidget = const_cast<UUserWidget*>(EntryWidget))
+	
+	if (const UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(EntryWidget->Slot))
 	{
-		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(NonConstWidget->Slot))
+		const FVector2D& SlotPos = CanvasSlot->GetPosition();
+		const FVector2D& SlotSize = CanvasSlot->GetSize();
+
+		const FVector2D& Pivot = EntryWidget->GetRenderTransformPivot();
+
+		const FVector2D& RenderTranslation = EntryWidget->GetRenderTransform().Translation;
+
+		// Where does the widget’s top-left corner end up in container coords?
+		const FVector2D& WidgetTopLeftInContainer =	(SlotPos	- (Pivot * SlotSize)) + RenderTranslation;
+		const FVector2D& CenterInWidgetLocal = 	Center - WidgetTopLeftInContainer;
+
+		// Finally, to convert from local pixel coords -> UV [0..1], 
+		// we divide by the widget’s size:
+		if (SlotSize.X > KINDA_SMALL_NUMBER && SlotSize.Y > KINDA_SMALL_NUMBER)
 		{
-			// The slot’s position in the container
-			const FVector2D SlotPos = CanvasSlot->GetPosition();
-
-			// The slot size we set:
-			//   (You could also just rely on the same "EntrySize" from above
-			//    but let's read it in case you do something dynamic.)
-			const FVector2D SlotSize = CanvasSlot->GetSize();
-
-			// The pivot we set for the widget’s transform
-			const FVector2D Pivot = NonConstWidget->GetRenderTransformPivot();
-
-			// The "translation" from the widget’s render transform
-			// (assuming no rotation or scale in RenderTransform):
-			const FVector2D RenderTranslation = NonConstWidget->GetRenderTransform().Translation;
-
-			// Where does the widget’s top-left corner end up in container coords?
-			// top-left = SlotPos - (Pivot * SlotSize) + RenderTranslation
-			const FVector2D WidgetTopLeftInContainer =
-				SlotPos
-				- (Pivot * SlotSize)
-				+ RenderTranslation;
-
-			// Then the container center (URadialStrategyWidget::Center) 
-			// minus that top-left => center in *widget local space*:
-			const FVector2D CenterInWidgetLocal = 
-				Center - WidgetTopLeftInContainer;
-
-			// Finally, to convert from local pixel coords -> UV [0..1], 
-			// we divide by the widget’s size:
-			if (SlotSize.X > KINDA_SMALL_NUMBER && SlotSize.Y > KINDA_SMALL_NUMBER)
-			{
-				UVCenterX = CenterInWidgetLocal.X / SlotSize.X;
-				UVCenterY = CenterInWidgetLocal.Y / SlotSize.Y;
-			}
+			UVCenterX = CenterInWidgetLocal.X / SlotSize.X;
+			UVCenterY = CenterInWidgetLocal.Y / SlotSize.Y;
 		}
 	}
 
 	// -------------------------------------------------------------------
 	// 4) Distance factor & radial extents
 	// -------------------------------------------------------------------
-	const float DistanceFactor = GetLayoutStrategyChecked<URadialLayoutStrategy>()
-								 .CalculateDistanceFactorForGlobalIndex(InGlobalIndex);
+	const float DistanceFactor = GetLayoutStrategyChecked<URadialLayoutStrategy>().CalculateDistanceFactorForGlobalIndex(InGlobalIndex);
 
 	const float MinRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMinRadius();
 	const float MaxRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMaxRadius();

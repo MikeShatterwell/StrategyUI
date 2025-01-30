@@ -10,6 +10,8 @@ class UBaseLayoutStrategy;
 class UUserWidget;
 class UCanvasPanel;
 
+class IStrategyDataProvider;
+
 // Delegate broadcast when an item gains focus. Provides the index and the data item object implementing UStrategyInteractiveEntry.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemFocusedDelegate, int32, Index, UObject*, Item);
 
@@ -58,7 +60,17 @@ public:
 
 	/** Custom entry widget class (must implement IStrategyEntryBase). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
-	TSubclassOf<UUserWidget> EntryWidgetClass;
+	TSubclassOf<UUserWidget> EntryWidgetClass = nullptr;
+	
+	/**
+	 * Optional data provider. If set, the widget will automatically fetch
+	 * items from the provider and refresh whenever the provider signals data changes.
+	 *
+	 * Only recommended to use this if working in a non-MVVM context.
+	 * If using the MVVM plugin for your UI, consider using a view model to provide data directly to SetItems.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI", AdvancedDisplay)
+	TScriptInterface<IStrategyDataProvider> DataProvider = nullptr;
 
 #pragma region Public API
 	// ---------------------------------------------------------------------------------------------
@@ -150,6 +162,15 @@ protected:
 	virtual void UpdateVisibleWidgets();
 
 	virtual void PositionWidget(int32 GlobalIndex);
+
+	// ---------------------------------------------------------------------------------------------
+	// Data Provider
+	// ---------------------------------------------------------------------------------------------
+	void SetDataProvider(const TScriptInterface<IStrategyDataProvider>& NewProvider);
+
+	UFUNCTION()
+	void OnDataProviderUpdated();
+	void RefreshFromProvider();
 
 
 	// ---------------------------------------------------------------------------------------------

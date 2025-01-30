@@ -6,10 +6,13 @@
 #include <Editor/WidgetCompilerLog.h>
 
 #include "DebugRadialItem.h"
+#include "Interfaces/IStrategyDataProvider.h"
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Utils/LogStrategyUI.h"
 #include "Utils/PropertyDebugPaintUtil.h"
 #include "Utils/StrategyUIGameplayTags.h"
+
+#define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
 
 UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer),
@@ -47,6 +50,14 @@ void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& Com
 			CompileLog.Error(FText::FromString(TEXT("EntryWidgetClass must implement IStrategyEntryBase interface!")));
 		}
 	}
+	
+#if WITH_EDITOR
+	// Check if MVVM plugin is loaded
+	if (DataProvider && WITH_MVVM)
+	{
+		CompileLog.Warning(FText::FromString(TEXT("You are using the MVVM plugin but have set a DataProvider in BaseStrategyWidget. Consider removing DataProvider and bind SetItems to a view model. Do not use both systems simultaneously.")));
+	}
+#endif
 }
 
 void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -76,10 +87,18 @@ void UBaseStrategyWidget::NativeConstruct()
 	const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
 	IndexToTagStateMap.Reserve(MaxVisibleEntries);
 	IndexToWidgetMap.Reserve(MaxVisibleEntries);
+	
+	SetDataProvider(DataProvider);
 }
 
 void UBaseStrategyWidget::Reset()
 {
+	// Unbind from the data provider
+	if (DataProvider)
+	{
+		DataProvider->GetOnDataProviderUpdated().RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+	}
+	
 	EntryWidgetPool.ResetPool();
 	IndexToWidgetMap.Empty();
 	Items.Empty();
@@ -92,28 +111,39 @@ void UBaseStrategyWidget::Reset()
 
 void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusIndex)
 {
-	if (FocusedGlobalIndex == InNewGlobalFocusIndex)
+if (FocusedGlobalIndex == InNewGlobalFocusIndex)
 	{
 		return; // No change
 	}
 
 	const FGameplayTag& FocusedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
-
-	// Unfocus old
-	if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+	
+	//----------------------------------------------------------
+	// 1) Unfocus *all* entries for the old focus data index
+	//----------------------------------------------------------
+	const int32 OldDataIndex = FocusedDataIndex;
+	if (OldDataIndex != INDEX_NONE)
 	{
-		if (OldEntry->Implements<UStrategyEntryBase>())
+		for (auto& Pair : IndexToWidgetMap)
 		{
-			constexpr bool bIsFocused = false;
-			UpdateEntryInteractionTagState(FocusedGlobalIndex, FocusedState, bIsFocused);
+			const int32 MappedGlobalIndex = Pair.Key;
+			UUserWidget* Widget = Pair.Value.Get();
+			if (!Widget) { continue; }
+
+			const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
+			if (MappedDataIndex == OldDataIndex)
+			{
+				UpdateEntryInteractionTagState(MappedGlobalIndex, FocusedState, /*bEnable=*/ false);
+			}
 		}
 	}
 
-	// Update
+	//----------------------------------------------------------
+	// 2) Update the new focus index & broadcast
+	//----------------------------------------------------------
 	FocusedGlobalIndex = InNewGlobalFocusIndex;
-	FocusedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InNewGlobalFocusIndex);
+	FocusedDataIndex   = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InNewGlobalFocusIndex);
 
-	// Broadcast focus change
 	if (FocusedDataIndex != INDEX_NONE && Items.IsValidIndex(FocusedDataIndex))
 	{
 		OnItemFocused.Broadcast(FocusedDataIndex, Items[FocusedDataIndex]);
@@ -123,13 +153,23 @@ void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusI
 		OnItemFocused.Broadcast(INDEX_NONE, nullptr);
 	}
 
-	// Focus new
-	if (UUserWidget* OldEntry = AcquireEntryWidget(FocusedGlobalIndex))
+	//----------------------------------------------------------
+	// 3) Focus *all* entries for the new focus data index
+	//----------------------------------------------------------
+	const int32 NewDataIndex = FocusedDataIndex;
+	if (NewDataIndex != INDEX_NONE)
 	{
-		if (OldEntry->Implements<UStrategyEntryBase>())
+		for (auto& Pair : IndexToWidgetMap)
 		{
-			constexpr bool bIsFocused = true;
-			UpdateEntryInteractionTagState(FocusedGlobalIndex, FocusedState, bIsFocused);
+			const int32 MappedGlobalIndex = Pair.Key;
+			UUserWidget* Widget = Pair.Value.Get();
+			if (!Widget) { continue; }
+
+			const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
+			if (MappedDataIndex == NewDataIndex)
+			{
+				UpdateEntryInteractionTagState(MappedGlobalIndex, FocusedState, /*bEnable=*/ true);
+			}
 		}
 	}
 }
@@ -225,6 +265,8 @@ int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& 
 
 void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 {
+	UE_CLOG(!LayoutStrategy, LogStrategyUI, Error, TEXT("%hs called with nullptr layout strategy -- this risks an imminent crash! There must always be a valid layout strategy. "), __FUNCTION__);
+
 	if (LayoutStrategy == NewStrategy)
 	{
 		return; // No change
@@ -241,8 +283,9 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 		{
 			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
 		}
+
+		UpdateVisibleWidgets();
 	}
-	UpdateVisibleWidgets();
 }
 
 void UBaseStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
@@ -418,6 +461,8 @@ void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 Global
 
 void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, const FGameplayTag& NewStateTag)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	// Validate that the new tag is a child of "StrategyUI.EntryState"
 	const FGameplayTag& EntryLifecycleParent = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Parent;
 	if (!NewStateTag.MatchesTag(EntryLifecycleParent))
@@ -459,6 +504,8 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 
 void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, const bool bEnable)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	const FGameplayTag& EntryInteractionParent = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Parent;
 
 	if (!InteractionTag.MatchesTag(EntryInteractionParent))
@@ -508,6 +555,7 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 	
 	if (GetItemCount() == 0)
 	{
+		Reset(); // We have no data, reset to default state
 #if WITH_EDITOR
 		if (DebugItemCount <= 0)
 		{
@@ -584,4 +632,50 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	CanvasSlot->SetZOrder(0);
 	CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 	CanvasSlot->SetPosition(LocalPos);
+}
+
+void UBaseStrategyWidget::SetDataProvider(const TScriptInterface<IStrategyDataProvider>& NewProvider)
+{
+	// Unbind from any existing provider
+	if (DataProvider)
+	{
+		DataProvider->GetOnDataProviderUpdated().RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+	}
+
+	DataProvider = NewProvider;
+
+	if (DataProvider)
+	{
+		// Bind to the new provider
+		DataProvider->GetOnDataProviderUpdated().AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+
+		// Immediately fetch data
+		RefreshFromProvider();
+		
+#if WITH_EDITOR
+		UE_CLOG(WITH_MVVM, LogStrategyUI, Warning, TEXT("The MVVM plugin is loaded, but DataProvider is also set. Behavior may conflict with MVVM data binding!"));
+#endif
+	}
+}
+
+void UBaseStrategyWidget::OnDataProviderUpdated()
+{
+	// Called when the provider signals data changed
+	RefreshFromProvider();
+}
+
+void UBaseStrategyWidget::RefreshFromProvider()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	if (!DataProvider)
+	{
+		return;
+	}
+
+	// Grab array of items from the provider
+	const TArray<UObject*> ProvidedItems = DataProvider->GetDataItems();
+	
+	// Feed them into the existing system
+	SetItems(ProvidedItems); // calls the base strategy widget's SetItems_Implementation which will UpdateVisibleWidgets()
 }
