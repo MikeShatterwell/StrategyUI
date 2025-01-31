@@ -4,6 +4,8 @@
 
 #include "BaseLayoutStrategy.generated.h"
 
+#define MAX_ENTRY_COUNT 128
+
 class UBaseStrategyWidget;
 class UWidget;
 
@@ -22,8 +24,39 @@ class STRATEGYUI_API UBaseLayoutStrategy : public UObject
 	GENERATED_BODY()
 
 public:
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override
+	{
+		UObject::PostEditChangeProperty(PropertyChangedEvent);
+
+		MaxVisibleEntries = FMath::Clamp(MaxVisibleEntries, 1, MAX_ENTRY_COUNT);
+	}
+#endif
+
+	//----------------------------------------------------------------------------------------------
+	// Editable Properties
+	//----------------------------------------------------------------------------------------------
+	/**
+	 * Maximum number of visible entries at once.
+	 * If Items.Num() exceeds this value, we only display a subset "visible window" that is determined by ComputeDesiredIndices.
+	 * 
+	 * This value is clamped to MAX_ENTRY_COUNT to prevent performance issues with an extreme number of widgets.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
+	int32 MaxVisibleEntries = 8;
+
+	/**
+	 * The set of global indices that are currently visible in the layout.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="BaseLayoutStrategy")
+	TSet<int32> VisibleGlobalIndices;
+
+	//--------------------------------------------------------------------------
+	// BaseLayoutStrategy API - virtual base functions
+	//--------------------------------------------------------------------------
 	/**
 	 * Called by the widget to initialize anything needed upon first assignment.
+	 * // @TODO: refactor to use a "LayoutStrategyHost" interface to avoid direct widget reference
 	 */
 	virtual void InitializeStrategy(UBaseStrategyWidget* OwnerWidget) {};
 
@@ -32,14 +65,17 @@ public:
 	 * This is called during widget compilation to ensure the strategy is set up correctly.
 	 */
 	virtual void ValidateStrategy(TArray<FText>& OutErrors) const {};
-	
-	/**
-	 * Computes which indices to show and possibly where to place them.
-	 */
-	virtual void ComputeLayout(int32 NumItems, TArray<int32>& OutIndicesToShow) {}
 
 	/** Get the position for a given item index. */
 	virtual FVector2D GetItemPosition(int32 GlobalIndex) const { return FVector2D::ZeroVector; }
+
+	/**
+	 * Get the currently focused global index.
+	 * "Focused" can mean different things depending on the layout strategy.
+	 * For example, in a radial layout, it might be the item closest to the radial pointer.
+	 * In a world marker layout, it might be an item near the crosshair location. //@TODO: Implement this
+	 */
+	virtual int32 FindFocusedGlobalIndex() const { return 0; }
 
 	/**
 	 * Returns the set of desired global indices to display.
@@ -71,11 +107,4 @@ public:
 	 * Called automatically by FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals if using that utility.
 	 */
 	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const {};
-
-	/**
-	 * Maximum number of visible entries at once.
-	 * If Items.Num() exceeds this value, we only display a subset "visible window" that is determined by ComputeDesiredIndices.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
-	int32 MaxVisibleEntries = 8;
 };

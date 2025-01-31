@@ -5,7 +5,7 @@
 #include <Blueprint/WidgetTree.h>
 #include <Editor/WidgetCompilerLog.h>
 
-#include "DebugRadialItem.h"
+#include "StrategyDebugItem.h"
 #include "Interfaces/IStrategyDataProvider.h"
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Utils/LogStrategyUI.h"
@@ -13,6 +13,7 @@
 #include "Utils/StrategyUIGameplayTags.h"
 
 #define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
+#define IS_VALID_DATA_PROVIDER(DataProvider) IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
 
 UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer),
@@ -44,8 +45,7 @@ void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& Com
 	}
 	else
 	{
-		const UClass* ItemEntryInterface = UStrategyEntryBase::StaticClass();
-		if (!EntryWidgetClass->ImplementsInterface(ItemEntryInterface))
+		if (!EntryWidgetClass->ImplementsInterface(UStrategyEntryBase::StaticClass()))
 		{
 			CompileLog.Error(FText::FromString(TEXT("EntryWidgetClass must implement IStrategyEntryBase interface!")));
 		}
@@ -84,19 +84,25 @@ void UBaseStrategyWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
-	IndexToTagStateMap.Reserve(MaxVisibleEntries);
-	IndexToWidgetMap.Reserve(MaxVisibleEntries);
-	
-	SetDataProvider(DataProvider);
+	if (LayoutStrategy)
+	{
+		const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
+		
+		IndexToTagStateMap.Reserve(MaxVisibleEntries);
+		IndexToWidgetMap.Reserve(MaxVisibleEntries);
+	}
+
+	if (DefaultDataProviderClass)
+	{
+		DataProvider = NewObject<UObject>(this, DefaultDataProviderClass);
+	}
 }
 
 void UBaseStrategyWidget::Reset()
 {
-	// Unbind from the data provider
-	if (DataProvider)
+	if (DataProvider && DataProvider->Implements<UStrategyDataProvider>())
 	{
-		DataProvider->GetOnDataProviderUpdated().RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+		
 	}
 	
 	EntryWidgetPool.ResetPool();
@@ -109,9 +115,9 @@ void UBaseStrategyWidget::Reset()
 	}
 }
 
-void UBaseStrategyWidget::UpdateFocusedGlobalIndex(const int32 InNewGlobalFocusIndex)
+void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 {
-if (FocusedGlobalIndex == InNewGlobalFocusIndex)
+	if (FocusedGlobalIndex == InNewGlobalFocusIndex)
 	{
 		return; // No change
 	}
@@ -254,7 +260,7 @@ int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& 
 									   FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	int32 MaxLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	if (bEnableDebugDraw && LayoutStrategy)
+	if (bPaintDebugInfo && LayoutStrategy)
 	{
 		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
 		FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, Center);
@@ -291,6 +297,12 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 void UBaseStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
 {
 	Items = InItems;
+
+	if (GetItemCount() <= 0)
+	{
+		UE_LOG(LogStrategyUI, Log, TEXT("%hs called with no items to display!"), __FUNCTION__);
+		return;
+	}
 
 	GetLayoutStrategyChecked().InitializeStrategy(this);
 	UpdateVisibleWidgets();
@@ -571,7 +583,7 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 		TArray<UObject*> DebugItems;
 		for (int32 i = 0; i < DebugItemCount ; ++i)
 		{
-			UDebugRadialItem* DebugItem = NewObject<UDebugRadialItem>(this);
+			UStrategyDebugItem* DebugItem = NewObject<UStrategyDebugItem>(this);
 			DebugItem->DebugLabel = FString::Printf(TEXT("Item %d"), i);
 			DebugItem->Id = i;
 			DebugItems.Add(DebugItem);
@@ -634,27 +646,21 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	CanvasSlot->SetPosition(LocalPos);
 }
 
-void UBaseStrategyWidget::SetDataProvider(const TScriptInterface<IStrategyDataProvider>& NewProvider)
+void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
 {
 	// Unbind from any existing provider
-	if (DataProvider)
+	if (IS_VALID_DATA_PROVIDER(DataProvider))
 	{
-		DataProvider->GetOnDataProviderUpdated().RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 	}
 
 	DataProvider = NewProvider;
 
-	if (DataProvider)
+	// Listen for updates from the new provider
+	if (IS_VALID_DATA_PROVIDER(DataProvider))
 	{
-		// Bind to the new provider
-		DataProvider->GetOnDataProviderUpdated().AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
-
-		// Immediately fetch data
+		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 		RefreshFromProvider();
-		
-#if WITH_EDITOR
-		UE_CLOG(WITH_MVVM, LogStrategyUI, Warning, TEXT("The MVVM plugin is loaded, but DataProvider is also set. Behavior may conflict with MVVM data binding!"));
-#endif
 	}
 }
 
@@ -667,15 +673,13 @@ void UBaseStrategyWidget::OnDataProviderUpdated()
 void UBaseStrategyWidget::RefreshFromProvider()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	if (!DataProvider)
-	{
-		return;
-	}
-
-	// Grab array of items from the provider
-	const TArray<UObject*> ProvidedItems = DataProvider->GetDataItems();
 	
-	// Feed them into the existing system
-	SetItems(ProvidedItems); // calls the base strategy widget's SetItems_Implementation which will UpdateVisibleWidgets()
+	if (IS_VALID_DATA_PROVIDER(DataProvider))
+	{
+		// Grab array of items from the provider
+		const TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
+	
+		// Feed them into the existing system
+		SetItems(ProvidedItems); // calls the base strategy widget's SetItems_Implementation which will UpdateVisibleWidgets()
+	}
 }

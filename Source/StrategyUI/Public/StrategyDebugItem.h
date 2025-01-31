@@ -3,15 +3,10 @@
 #include <CoreMinimal.h>
 #include <UObject/Object.h>
 
-#include "DebugRadialItem.generated.h"
+#include "StrategyDebugItem.generated.h"
 
-/**
- * A simple UObject to store debug data that can be passed to the RadialSpiralPanel.
- * You can create and populate instances of this class in code or in Blueprint,
- * then pass them into URadialSpiralPanel::SetRadialItems().
- */
 UCLASS(Blueprintable)
-class STRATEGYUI_API UDebugRadialItem : public UObject
+class STRATEGYUI_API UStrategyDebugItem : public UObject
 {
 	GENERATED_BODY()
 

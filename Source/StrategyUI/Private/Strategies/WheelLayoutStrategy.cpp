@@ -4,6 +4,9 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(WheelLayoutStrategy)
 
+//--------------------------------------------------------------------------
+// BaseLayoutStrategy overrides
+//--------------------------------------------------------------------------
 void UWheelLayoutStrategy::InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
 {
 	Super::InitializeStrategy(OwnerWidget);
@@ -20,23 +23,37 @@ void UWheelLayoutStrategy::InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
 	UpdateAngularSpacing();
 }
 
-float UWheelLayoutStrategy::SanitizeAngle(const float InAngle) const
+FVector2D UWheelLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const
 {
-	float WorkingAngle = InAngle;
-	WorkingAngle = FMath::Fmod(WorkingAngle, 360.f);
-		
-	// If negative, wrap around
-	if (WorkingAngle < 0.f)
-	{
-		WorkingAngle += 360.f;
-	}
-	return WorkingAngle;
+	const int32 ClampedIndex = FMath::Clamp(GlobalIndex, 0, RadialSegmentCount - 1);
+
+	const float Degrees = static_cast<float>(ClampedIndex) * AngularSpacing;
+	const float Radians = FMath::DegreesToRadians(Degrees);
+
+	// Simply place the item around the fixed radius
+	const float X = BaseRadius * FMath::Cos(Radians);
+	const float Y = BaseRadius * FMath::Sin(Radians);
+
+	return FVector2D(X, Y);
 }
 
-int32 UWheelLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
+int32 UWheelLayoutStrategy::FindFocusedGlobalIndex() const
 {
-	GapPaddingSegments = FMath::Max(0, RadialSegmentCount - TotalItems);
-	return GapPaddingSegments;
+	// Clamp to [0..360] since we don't need to worry about multiple turn cycles in a wheel
+	float CleanAngle = FMath::Fmod(LatestPointerAngle, 360.f);
+	if (CleanAngle < 0.f)
+	{
+		CleanAngle += 360.f;
+	}
+
+	// Add half wedge to center on segments
+	CleanAngle += (AngularSpacing * 0.5f);
+
+	// Wrap again into [0..360]
+	CleanAngle = FMath::Fmod(CleanAngle, 360.f);
+
+	// Find which wedge we're in
+	return FMath::FloorToInt(CleanAngle / AngularSpacing);
 }
 
 TSet<int32> UWheelLayoutStrategy::ComputeDesiredGlobalIndices()
@@ -61,37 +78,26 @@ FVector2D UWheelLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)
 	return FVector2D(BaseRadius * 2.f);
 }
 
-FVector2D UWheelLayoutStrategy::GetItemPosition(const int32 GlobalIndex) const
+//--------------------------------------------------------------------------
+// RadialLayoutStrategy overrides
+//--------------------------------------------------------------------------
+float UWheelLayoutStrategy::SanitizeAngle(const float InAngle) const
 {
-	const int32 ClampedIndex = FMath::Clamp(GlobalIndex, 0, RadialSegmentCount - 1);
-
-	const float Degrees = static_cast<float>(ClampedIndex) * AngularSpacing;
-	const float Radians = FMath::DegreesToRadians(Degrees);
-
-	// Simply place the item around the fixed radius
-	const float X = BaseRadius * FMath::Cos(Radians);
-	const float Y = BaseRadius * FMath::Sin(Radians);
-
-	return FVector2D(X, Y);
+	float WorkingAngle = InAngle;
+	WorkingAngle = FMath::Fmod(WorkingAngle, 360.f);
+		
+	// If negative, wrap around
+	if (WorkingAngle < 0.f)
+	{
+		WorkingAngle += 360.f;
+	}
+	return WorkingAngle;
 }
 
-int32 UWheelLayoutStrategy::FindFocusedGlobalIndexByAngle() const
+int32 UWheelLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
 {
-	// Clamp to [0..360] since we don't need to worry about multiple turn cycles in a wheel
-	float CleanAngle = FMath::Fmod(LatestPointerAngle, 360.f);
-	if (CleanAngle < 0.f)
-	{
-		CleanAngle += 360.f;
-	}
-
-	// Add half wedge to center on segments
-	CleanAngle += (AngularSpacing * 0.5f);
-
-	// Wrap again into [0..360]
-	CleanAngle = FMath::Fmod(CleanAngle, 360.f);
-
-	// Find which wedge we're in
-	return FMath::FloorToInt(CleanAngle / AngularSpacing);
+	GapPaddingSegments = FMath::Max(0, RadialSegmentCount - TotalItems);
+	return GapPaddingSegments;
 }
 
 float UWheelLayoutStrategy::ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const

@@ -2,6 +2,9 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RadialLayoutStrategy)
 
+//----------------------------------------------------------------------------------------------
+// BaseLayoutStrategy overrides
+//----------------------------------------------------------------------------------------------
 void URadialLayoutStrategy::InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
 {
 	if (!ensureMsgf(OwnerWidget, TEXT("OwnerWidget is null in %hs!"), __FUNCTION__))
@@ -27,21 +30,6 @@ void URadialLayoutStrategy::ValidateStrategy(TArray<FText>& OutErrors) const
 	}
 }
 
-float URadialLayoutStrategy::SanitizeAngle(const float InAngle) const
-{
-	return InAngle;
-}
-
-void URadialLayoutStrategy::SetNumItems(const int32 InNumItems)
-{
-	NumItems = FMath::Max(0, InNumItems);
-}
-
-void URadialLayoutStrategy::SetPointerAngle(const float InAngle)
-{
-	LatestPointerAngle = SanitizeAngle(InAngle);
-}
-
 TSet<int32> URadialLayoutStrategy::ComputeDesiredGlobalIndices()
 {
 	VisibleGlobalIndices.Empty(RadialSegmentCount);
@@ -54,39 +42,14 @@ TSet<int32> URadialLayoutStrategy::ComputeDesiredGlobalIndices()
 	return VisibleGlobalIndices;
 }
 
-void URadialLayoutStrategy::UpdateAngularSpacing()
-{
-	AngularSpacing = (RadialSegmentCount > 0) ? (360.f / RadialSegmentCount) : 0.f;
-}
-
 int32 URadialLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) const
 {
 	return (GlobalIndex >= 0 && GlobalIndex < NumItems) ? GlobalIndex : INDEX_NONE;
 }
 
-float URadialLayoutStrategy::CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const
-{
-	return static_cast<float>(GlobalIndex) * AngularSpacing;
-}
-
-float URadialLayoutStrategy::CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const
-{
-	return BaseRadius;
-}
-
 bool URadialLayoutStrategy::ShouldBeVisible(const int32 GlobalIndex) const
 {
 	return (GlobalIndex >= VisibleStartIndex && GlobalIndex <= VisibleEndIndex);
-}
-
-float URadialLayoutStrategy::GetMinRadius() const
-{
-	return BaseRadius;
-}
-
-float URadialLayoutStrategy::GetMaxRadius() const
-{
-	return BaseRadius;
 }
 
 void URadialLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const
@@ -170,4 +133,44 @@ void URadialLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, 
 			);
 		}
 	}
+}
+
+
+//----------------------------------------------------------------------------------------------
+// Radial Layout Strategy - virtual base functions
+//----------------------------------------------------------------------------------------------
+int32 URadialLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
+{
+	GapPaddingSegments = FMath::Max(0, RadialSegmentCount - TotalItems);
+	return GapPaddingSegments;
+}
+
+float URadialLayoutStrategy::SanitizeAngle(const float InAngle) const
+{
+	return InAngle;
+}
+
+void URadialLayoutStrategy::UpdateAngularSpacing()
+{
+	AngularSpacing = (RadialSegmentCount > 0) ? (360.f / RadialSegmentCount) : 0.f;
+}
+
+float URadialLayoutStrategy::ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const
+{
+	return 0.f;
+}
+
+float URadialLayoutStrategy::CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const
+{
+	return 0.f;
+}
+
+float URadialLayoutStrategy::CalculateItemAngleDegreesForGlobalIndex(const int32 GlobalIndex) const
+{
+	return static_cast<float>(GlobalIndex) * AngularSpacing;
+}
+
+float URadialLayoutStrategy::CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const
+{
+	return BaseRadius;
 }

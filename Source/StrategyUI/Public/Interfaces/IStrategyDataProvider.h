@@ -11,13 +11,28 @@
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDataProviderUpdated);
 
+/*
+ * Wrapper for the dynamic multicast delegate to allow it to be exposed to Blueprints.
+ *
+ * A data provider can return an instance of this delegate wrapper to allow potentially several strategy widgets to bind to the delegate.
+ */
+UCLASS(Blueprintable)
+class UOnDataProviderUpdatedDelegateWrapper : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable, Category = "Delegates")
+	FOnDataProviderUpdated OnDataProviderUpdatedDelegate;
+};
+
 /**
  * Interface for an object that provides an array of data items for UBaseStrategyWidget.
  * Could be a manager subsystem, etc.
  *
  * If assigned to a widget, the widget will automatically fetch data items from the provider
  */
-UINTERFACE(BlueprintType)
+UINTERFACE(BlueprintType, Blueprintable)
 class STRATEGYUI_API UStrategyDataProvider : public UInterface
 {
 	GENERATED_BODY()
@@ -25,7 +40,7 @@ class STRATEGYUI_API UStrategyDataProvider : public UInterface
 
 class IStrategyDataProvider
 {
-	GENERATED_IINTERFACE_BODY()
+	GENERATED_BODY()
 
 public:
 	/**
@@ -33,10 +48,24 @@ public:
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
 	TArray<UObject*> GetDataItems() const;
+	
+	/** 
+	 * Return whether the provider is “ready” 
+	 * (in case it’s loading from disk or waiting for a streaming level). 
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	bool IsProviderReady() const;
+
+	/**
+	 * Removes binding to this provider. 
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	void UnbindDataProvider(UObject* Widget);
 
 	/**
 	 * Return a delegate used to notify that data changed.
 	 * The widget can bind to this to call Refresh.
 	 */
-	virtual FOnDataProviderUpdated& GetOnDataProviderUpdated();
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	UOnDataProviderUpdatedDelegateWrapper* GetOnDataProviderUpdated();
 };

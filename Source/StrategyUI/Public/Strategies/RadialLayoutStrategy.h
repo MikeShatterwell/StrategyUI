@@ -38,7 +38,7 @@ public:
 
 #pragma region Public API
 	//----------------------------------------------------------------------------------------------
-	// Public API
+	// BaseLayoutStrategy overrides
 	//----------------------------------------------------------------------------------------------
 	/**
 	 * Allows the layout strategy to initialize any internal data
@@ -53,62 +53,39 @@ public:
 	virtual void ValidateStrategy(TArray<FText>& OutErrors) const override;
 
 	/**
+	 * Returns the set of desired global indices to display in the current visible window.
+	 * Best to call UpdateVisibleWindow before this to ensure the window is up-to-date.
+	 */
+	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
+	
+	/**
+	 * In a basic radial setup, the global index should map directly to the data index.
+	 */
+	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
+
+	virtual bool ShouldBeVisible(const int32 GlobalIndex) const override;
+	
+	/**
+	 * Draws BaseRadius circle, radial segments, and the pointer angle.
+	 */
+	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const override;
+	
+	//----------------------------------------------------------------------------------------------
+	// Radial Layout Strategy API - virtual base functions
+	//----------------------------------------------------------------------------------------------
+	/**
+	 * Computes the number of "gap segments" to add after the last item.
+	 * This is useful for maintaining consistent spacing if we have fewer items than segments.
+	 */
+	virtual int32 UpdateGapSegments(const int32 TotalItems);
+	
+	/**
 	 * Optionally ensure the working pointer angle is within a valid range for the layout strategy.
 	 * For a wheel, this is typically [0..360]
 	 * For an infinite spiral, this can be unbounded.
 	 */
 	virtual float SanitizeAngle(const float InAngle) const;
-
-	/**
-	 * Sets the number of items in the owner's data list.
-	 */
-	void SetNumItems(const int32 InNumItems);
-
-	/**
-	 * Sets the latest pointer angle in degrees.
-	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
-	 */
-	void SetPointerAngle(const float InAngle);
-
-	/**
-	 * Gets the latest pointer angle in degrees.
-	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
-	 */
-	float GetPointerAngle() const { return LatestPointerAngle; }
-
-	/**
-	 * Computes the number of "gap segments" to add after the last item.
-	 * This is useful for maintaining consistent spacing if we have fewer items than segments.
-	 */
-	virtual int32 UpdateGapSegments(const int32 TotalItems) PURE_VIRTUAL(URadialLayoutStrategy::ComputeGapSegments, return 0;);
-
-	/**
-	 * Gets the number of "gap segments" to add after the last item.
-	 * This is useful for maintaining consistent spacing if we have fewer items than segments.
-	 */
-	int32 GetGapSegments() const { return GapPaddingSegments; }
-
-	/**
-	 * Angle difference between each item in the layout. Assumes equidistant segments.
-	 */
-	virtual float GetAngularSpacing() const { return AngularSpacing; }
-
-	/**
-	* Gets the global index representing the head of the "visible window" (for item num > MaxVisibleEntries).
-	*/
-	int32 GetVisibleStartIndex() const { return VisibleStartIndex; }
-
-	/**
-	* Gets The global index representing the tail of the "visible window" (for item num > MaxVisibleEntries).
-	*/
-	int32 GetVisibleEndIndex() const { return VisibleEndIndex; }
 	
-
-	/**
-	 * Returns the set of desired global indices to display in the current visible window.
-	 * Best to call UpdateVisibleWindow before this to ensure the window is up-to-date.
-	 */
-	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
 
 	/** 
 	 * Calculates how many degrees lie between consecutive data items and caches it as AngularSpacing
@@ -116,27 +93,19 @@ public:
 	 */
 	virtual void UpdateAngularSpacing();
 	
-	/**
-	 * Finds the global index of the item that is "in focus" (closest to CurrentAngle).
-	 */
-	virtual int32 FindFocusedGlobalIndexByAngle() const PURE_VIRTUAL(URadialLayoutStrategy::FindFocusIndexByAngle, return INDEX_NONE;);
 
 	/**
 	 * Computes the angle for the entry at the given data index closest to the current angle.
 	 * This is useful for calculating the position of the item in the layout.
 	 */
-	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const PURE_VIRTUAL(URadialLayoutStrategy::ComputeShortestUnboundAngleForDataIndex, return 0.f;);
-
-	/**
-	 * In a basic radial setup, the global index should map directly to the data index.
-	 */
-	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
+	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const;
 	
 	/**
 	 * Calculates the distance factor for the given global index.
 	 * This is used to determine how close an item is to the pointer's depth in [0..1] (0 = far, 0.5 = at pointer, 1 = near).
 	 */
-	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const PURE_VIRTUAL(URadialLayoutStrategy::CalculateDistanceFactorForGlobalIndex, return 0.f;);
+	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const;;
+	
 
 	/**
 	 * This is used to determine the layout's radial wedge angle for the item.
@@ -147,30 +116,57 @@ public:
 	 * This is used to determine the layout wedge radius for the item (how far from the center it should be positioned radially).
 	 */
 	virtual float CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const;
-	
-	virtual bool ShouldBeVisible(const int32 GlobalIndex) const override;
+
+	virtual float GetMinRadius() const { return BaseRadius; }
+	virtual float GetMaxRadius() const { return BaseRadius; }
+
+	//----------------------------------------------------------------------------------------------
+	// Radial Layout Strategy API - Getters and Setters
+	//----------------------------------------------------------------------------------------------
+	/**
+	 * Sets the number of items in the owner's data list.
+	 */
+	void SetNumItems(const int32 InNumItems)
+	{
+		NumItems = FMath::Max(0, InNumItems);
+	}
 
 	/**
-	 * Returns the minimum radius for the layout.
-	 * This is useful for determining the innermost radius of the layout in order to construct the wedge material data.
-	 * Returns BaseRadius for a simple wheel layout, but can be overridden for more complex layouts (see spiral layout strategy).
+	 * Sets the latest pointer angle in degrees.
+	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
 	 */
-	UFUNCTION(BlueprintPure, BlueprintCosmetic, Category="RadialStrategy|Layout")
-	virtual float GetMinRadius() const;
+	void SetPointerAngle(const float InAngle)
+	{
+		LatestPointerAngle = SanitizeAngle(InAngle);
+	}
 
 	/**
-	 * Returns the maximum radius for the layout.
-	 * This is useful for determining the outermost radius of the layout in order to construct the wedge material data.
-	 * Returns BaseRadius for a simple wheel layout, but can be overridden for more complex layouts (see spiral layout strategy).
+	 * Gets the latest pointer angle in degrees.
+	 * This angle is used to determine which item is "focused" or "closest" to the pointer.
 	 */
-	UFUNCTION(BlueprintPure, BlueprintCosmetic, Category="RadialStrategy|Layout")
-	virtual float GetMaxRadius() const;
+	float GetPointerAngle() const { return LatestPointerAngle; }
+
+	/**
+	 * Gets the number of "gap segments" to add after the last item.
+	 * This is useful for maintaining consistent spacing if we have fewer items than segments.
+	 */
+	int32 GetGapSegments() const { return GapPaddingSegments; }
+
+	/**
+	 * Angle difference between each item in the layout. Assumes equidistant segments.
+	 */
+	float GetAngularSpacing() const { return AngularSpacing; }
+
+	/**
+	* Gets the global index representing the head of the "visible window" (for item num > MaxVisibleEntries).
+	*/
+	int32 GetVisibleStartIndex() const { return VisibleStartIndex; }
+
+	/**
+	* Gets The global index representing the tail of the "visible window" (for item num > MaxVisibleEntries).
+	*/
+	int32 GetVisibleEndIndex() const { return VisibleEndIndex; }
 #pragma endregion Public API
-
-	/**
-	 * Draws BaseRadius circle, radial segments, and the pointer angle.
-	 */
-	virtual void DrawDebugVisuals(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId, const FVector2D& Center) const override;
 
 protected:
 #pragma region Runtime Properties
@@ -187,20 +183,17 @@ protected:
 
 	/**
 	* The global index representing the head of the "visible window" (for item num > MaxVisibleEntries).
+	* Radial strategies will typically show all items in the window.
 	*/
 	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Layout")
 	int32 VisibleStartIndex = INDEX_NONE;
 
 	/**
 	 * The global index representing the tail of the "visible window" (for item num > MaxVisibleEntries).
+	 * Radial strategies will typically show all items in the window.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Layout")
 	int32 VisibleEndIndex = INDEX_NONE;
-
-	/**
-	 * The set of global indices that are currently visible in the layout.
-	 */
-	TSet<int32> VisibleGlobalIndices;
 
 	/** Angle difference between each item in the layout. Assumes equidistant segments. */
 	UPROPERTY(BlueprintReadOnly, Category = "RadialStrategy|Layout")

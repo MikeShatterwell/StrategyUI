@@ -15,6 +15,9 @@ class STRATEGYUI_API USpiralLayoutStrategy : public URadialLayoutStrategy
 	GENERATED_BODY()
 
 public:
+	//----------------------------------------------------------------------------------------------
+	// Editable Properties
+	//----------------------------------------------------------------------------------------------
 	/**
 	 * Entries are offset outward based on distance from the focused item.
 	 * This setting controls the maximum offset (in screen units) at the farthest points (distance factor of 1).
@@ -37,22 +40,13 @@ public:
 	float DistanceFactorTurnThreshold = 2.f;
 
 	//--------------------------------------------------------------------------
-	// RadialLayoutStrategy overrides
+	// BaseLayoutStrategy overrides
 	//--------------------------------------------------------------------------
-	virtual int32 UpdateGapSegments(const int32 TotalItems) override;
+	virtual FVector2D GetItemPosition(const int32 GlobalIndex) const override;
+	virtual int32 FindFocusedGlobalIndex() const override;
 	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
 	virtual FVector2D ComputeEntryWidgetSize(const int32 GlobalIndex) override;
-	virtual FVector2D GetItemPosition(const int32 GlobalIndex) const override;
-	virtual int32 FindFocusedGlobalIndexByAngle() const override;
-	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const override;
 	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
-	
-	virtual float CalculateItemAngleDegreesForGlobalIndex(int32 GlobalIndex) const override;
-	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const override;
-	virtual float CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const override;
-	
-	virtual float GetMinRadius() const override;
-	virtual float GetMaxRadius() const override;
 
 	/**
 	 * Draws debug visuals for the spiral layout.
@@ -64,4 +58,17 @@ public:
 		FSlateWindowElementList& OutDrawElements,
 		const int32 LayerId,
 		const FVector2D& Center) const override;
+
+	//--------------------------------------------------------------------------
+	// RadialLayoutStrategy overrides
+	//--------------------------------------------------------------------------
+	virtual int32 UpdateGapSegments(const int32 TotalItems) override;
+	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const override;
+	
+	virtual float CalculateItemAngleDegreesForGlobalIndex(int32 GlobalIndex) const override;
+	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const override;
+	virtual float CalculateRadiusForGlobalIndex(const int32 GlobalIndex) const override;
+	
+	virtual float GetMinRadius() const override { return BaseRadius + SpiralInwardOffset; }
+	virtual float GetMaxRadius() const override { return BaseRadius + SpiralOutwardOffset; }
 };

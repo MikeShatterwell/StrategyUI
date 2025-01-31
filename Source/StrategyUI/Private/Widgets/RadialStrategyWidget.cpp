@@ -204,13 +204,13 @@ void URadialStrategyWidget::ResetInput()
 
 	RuntimeScrollingAnimState.bIsAnimating = false;
 	SetCurrentAngle(0.0f);
-	UpdateFocusedGlobalIndex(INDEX_NONE);
+	UpdateFocusedIndex(INDEX_NONE);
 }
 
 void URadialStrategyWidget::UpdateFocusIndex()
 {
-	const int32 NewGlobalFocusIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndexByAngle();
-	UpdateFocusedGlobalIndex(NewGlobalFocusIndex);
+	const int32 NewGlobalFocusIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndex();
+	UpdateFocusedIndex(NewGlobalFocusIndex);
 }
 
 void URadialStrategyWidget::ScrollToItemAnimated(const int32 DataIndex, const float Duration)
@@ -306,10 +306,10 @@ int32 URadialStrategyWidget::NativePaint(
 	if (CachedSize != AllottedGeometry.GetLocalSize())
 	{
 		CachedSize = AllottedGeometry.GetLocalSize();
-		Center     = CachedSize * 0.5f;
+		Center = CachedSize * 0.5f;
 	}
 
-	if (!bEnableDebugDraw || !LayoutStrategy)
+	if (!bPaintDebugInfo || !LayoutStrategy)
 	{
 		return MaxLayer;
 	}

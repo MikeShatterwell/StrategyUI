@@ -4,6 +4,7 @@
 #include <Blueprint/UserWidgetPool.h>
 #include <GameplayTagContainer.h>
 
+#include "Interfaces/IStrategyDataProvider.h"
 #include "BaseStrategyWidget.generated.h"
 
 class UBaseLayoutStrategy;
@@ -69,8 +70,8 @@ public:
 	 * Only recommended to use this if working in a non-MVVM context.
 	 * If using the MVVM plugin for your UI, consider using a view model to provide data directly to SetItems.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI", AdvancedDisplay)
-	TScriptInterface<IStrategyDataProvider> DataProvider = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(MustImplement="StrategyDataProvider"))
+	TSubclassOf<UObject> DefaultDataProviderClass = nullptr;
 
 #pragma region Public API
 	// ---------------------------------------------------------------------------------------------
@@ -107,7 +108,7 @@ public:
 	virtual void Reset();
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Focus")
-	virtual void UpdateFocusedGlobalIndex(int32 InNewGlobalFocusIndex);
+	virtual void UpdateFocusedIndex(int32 InNewGlobalFocusIndex);
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
 	virtual void SetSelectedGlobalIndex(int32 InGlobalIndex, bool bShouldBeSelected);
@@ -125,13 +126,11 @@ protected:
 	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 #pragma endregion UWidget Overrides
 
-	UBaseLayoutStrategy& GetLayoutStrategyChecked() const
-	{
-		check(LayoutStrategy);
-		return *LayoutStrategy;
-	}
-
-	template<typename T>
+	/** 
+	 * Returns a reference to the current layout strategy object, ensuring it is valid.
+	 * There must always be a valid layout strategy.
+	 */
+	template<typename T = UBaseLayoutStrategy>
 	T& GetLayoutStrategyChecked() const
 	{
 		T* StrategyType = Cast<T>(LayoutStrategy);
@@ -166,20 +165,33 @@ protected:
 	// ---------------------------------------------------------------------------------------------
 	// Data Provider
 	// ---------------------------------------------------------------------------------------------
-	void SetDataProvider(const TScriptInterface<IStrategyDataProvider>& NewProvider);
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	void SetDataProvider(UObject* NewProvider);
 
 	UFUNCTION()
 	void OnDataProviderUpdated();
 	void RefreshFromProvider();
 
-
 	// ---------------------------------------------------------------------------------------------
-	// Runtime Properties
+	// Runtime Data
 	// ---------------------------------------------------------------------------------------------
 	/** The source of truth data array. Subclasses can interpret these items in any way needed. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget|Data")
 	TArray<TObjectPtr<UObject>> Items;
 
+	/**
+	 * Optional data provider. If set, the widget will automatically fetch
+	 * items from the provider and refresh whenever the provider signals data changes.
+	 *
+	 * Only recommended to use this if working in a non-MVVM context.
+	 * If using the MVVM plugin for your UI, consider using a view model to provide data directly to SetItems.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget")
+	TObjectPtr<UObject> DataProvider = nullptr;
+
+	// ---------------------------------------------------------------------------------------------
+	// Entry Widgets & State
+	// ---------------------------------------------------------------------------------------------
 	/** A reusable pool of entry widgets. */
 	UPROPERTY(Transient)
 	FUserWidgetPool EntryWidgetPool;
@@ -241,9 +253,16 @@ protected:
 	//----------------------------------------------------------------------------------------------
 	/** If true, we debug-draw pointer lines, circles, angles, etc. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
-	bool bEnableDebugDraw = false;
+	bool bEnableDebug = false;
+	
+	/** If true, we debug-draw pointer lines, circles, angles, etc. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(EditCondition="bEnableDebug"))
+	bool bPaintDebugInfo = false;
 
-	/** Number of debug items to show if no other data is supplied via SetItems(). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(ClampMin="0"))
+	/**
+	 * Number of debug items to show if no other data is supplied via SetItems().
+	 * Only valid in the editor. Overridden if a valid data provider is set.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(ClampMin="0", EditCondition="bEnableDebug"))
 	int32 DebugItemCount = 0;
 };
