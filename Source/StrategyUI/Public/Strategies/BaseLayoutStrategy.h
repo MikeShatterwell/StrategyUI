@@ -46,10 +46,10 @@ public:
 	int32 MaxVisibleEntries = 8;
 
 	/**
-	 * The set of global indices that are currently visible in the layout.
+	 * The set of global indices represented in the layout.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="BaseLayoutStrategy")
-	TSet<int32> VisibleGlobalIndices;
+	TSet<int32> DesiredGlobalIndices;
 
 	//--------------------------------------------------------------------------
 	// BaseLayoutStrategy API - virtual base functions

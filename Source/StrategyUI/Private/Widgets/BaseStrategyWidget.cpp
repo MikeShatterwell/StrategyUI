@@ -13,7 +13,7 @@
 #include "Utils/StrategyUIGameplayTags.h"
 
 #define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
-#define IS_VALID_DATA_PROVIDER(DataProvider) IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
+#define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
 
 UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer),
@@ -77,7 +77,17 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 	}
 
 	Reset();
+	ConstructDataProviderObject();
 	UpdateVisibleWidgets();
+}
+
+void UBaseStrategyWidget::ConstructDataProviderObject()
+{
+	if (DefaultDataProviderClass)
+	{
+		DataProvider = NewObject<UObject>(this, DefaultDataProviderClass);
+		SetDataProvider(DataProvider);
+	}
 }
 
 void UBaseStrategyWidget::NativeConstruct()
@@ -92,17 +102,19 @@ void UBaseStrategyWidget::NativeConstruct()
 		IndexToWidgetMap.Reserve(MaxVisibleEntries);
 	}
 
-	if (DefaultDataProviderClass)
-	{
-		DataProvider = NewObject<UObject>(this, DefaultDataProviderClass);
-	}
+	ConstructDataProviderObject();
 }
 
 void UBaseStrategyWidget::Reset()
 {
-	if (DataProvider && DataProvider->Implements<UStrategyDataProvider>())
+	// Unbind from any existing provider
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
-		
+		FOnDataProviderUpdated OnDataProviderUpdated = IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate;
+		if (OnDataProviderUpdated.IsAlreadyBound(this, &UBaseStrategyWidget::OnDataProviderUpdated))
+		{
+			OnDataProviderUpdated.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+		}
 	}
 	
 	EntryWidgetPool.ResetPool();
@@ -568,30 +580,6 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 	if (GetItemCount() == 0)
 	{
 		Reset(); // We have no data, reset to default state
-#if WITH_EDITOR
-		if (DebugItemCount <= 0)
-		{
-			return;
-		}
-
-		if (IsDesignTime())
-		{
-			return;
-		}
-		
-		// Create debug data for easy layout testing in the editor
-		TArray<UObject*> DebugItems;
-		for (int32 i = 0; i < DebugItemCount ; ++i)
-		{
-			UStrategyDebugItem* DebugItem = NewObject<UStrategyDebugItem>(this);
-			DebugItem->DebugLabel = FString::Printf(TEXT("Item %d"), i);
-			DebugItem->Id = i;
-			DebugItems.Add(DebugItem);
-		}
-
-		// Use the newly created debug data and update again
-		SetItems(DebugItems);
-#endif
 		return;
 	}
 
@@ -649,15 +637,21 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
 {
 	// Unbind from any existing provider
-	if (IS_VALID_DATA_PROVIDER(DataProvider))
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
 		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 	}
 
 	DataProvider = NewProvider;
 
+	if (DataProvider)
+	{
+		// Initialize the new provider if we have one
+		IStrategyDataProvider::Execute_InitializeDataProvider(DataProvider);
+	}
+
 	// Listen for updates from the new provider
-	if (IS_VALID_DATA_PROVIDER(DataProvider))
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
 		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 		RefreshFromProvider();
@@ -674,7 +668,7 @@ void UBaseStrategyWidget::RefreshFromProvider()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	
-	if (IS_VALID_DATA_PROVIDER(DataProvider))
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
 		// Grab array of items from the provider
 		const TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);

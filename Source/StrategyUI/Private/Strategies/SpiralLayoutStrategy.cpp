@@ -33,7 +33,7 @@ int32 USpiralLayoutStrategy::FindFocusedGlobalIndex() const
 
 TSet<int32> USpiralLayoutStrategy::ComputeDesiredGlobalIndices()
 {
-	VisibleGlobalIndices.Empty(MaxVisibleEntries);
+	DesiredGlobalIndices.Empty(MaxVisibleEntries);
 
 	// We'll pick a window half on each side of the focused item.
 	const int32 HalfWindow = MaxVisibleEntries / 2;
@@ -47,9 +47,9 @@ TSet<int32> USpiralLayoutStrategy::ComputeDesiredGlobalIndices()
 
 	for (int32 i = ExtendedStart; i <= ExtendedEnd; ++i)
 	{
-		VisibleGlobalIndices.Add(i);
+		DesiredGlobalIndices.Add(i);
 	}
-	return VisibleGlobalIndices;
+	return DesiredGlobalIndices;
 }
 
 FVector2D USpiralLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)

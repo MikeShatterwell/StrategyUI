@@ -32,14 +32,14 @@ void URadialLayoutStrategy::ValidateStrategy(TArray<FText>& OutErrors) const
 
 TSet<int32> URadialLayoutStrategy::ComputeDesiredGlobalIndices()
 {
-	VisibleGlobalIndices.Empty(RadialSegmentCount);
+	DesiredGlobalIndices.Empty(RadialSegmentCount);
 
 	// All segment indices are desired in a basic radial wheel layout
 	for (int32 i = 0; i < RadialSegmentCount; ++i)
 	{
-		VisibleGlobalIndices.Add(i);
+		DesiredGlobalIndices.Add(i);
 	}
-	return VisibleGlobalIndices;
+	return DesiredGlobalIndices;
 }
 
 int32 URadialLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) const

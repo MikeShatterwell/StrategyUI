@@ -57,10 +57,12 @@ public:
 	bool IsProviderReady() const;
 
 	/**
-	 * Removes binding to this provider. 
+	 * Initialize the data provider.
+	 * This is called when the provider is first assigned to a widget.
+	 * Override this to initialize any internal data, (UOnDataProviderUpdatedDelegateWrapper, etc).
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
-	void UnbindDataProvider(UObject* Widget);
+	void InitializeDataProvider();
 
 	/**
 	 * Return a delegate used to notify that data changed.

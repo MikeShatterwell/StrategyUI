@@ -43,6 +43,7 @@ public:
 #if WITH_EDITOR
 	virtual void ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+	void ConstructDataProviderObject();
 #endif
 
 	/**
@@ -253,16 +254,5 @@ protected:
 	//----------------------------------------------------------------------------------------------
 	/** If true, we debug-draw pointer lines, circles, angles, etc. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
-	bool bEnableDebug = false;
-	
-	/** If true, we debug-draw pointer lines, circles, angles, etc. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(EditCondition="bEnableDebug"))
 	bool bPaintDebugInfo = false;
-
-	/**
-	 * Number of debug items to show if no other data is supplied via SetItems().
-	 * Only valid in the editor. Overridden if a valid data provider is set.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget", meta=(ClampMin="0", EditCondition="bEnableDebug"))
-	int32 DebugItemCount = 0;
 };

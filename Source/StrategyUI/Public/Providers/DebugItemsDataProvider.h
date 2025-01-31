@@ -15,8 +15,6 @@ class STRATEGYUI_API UDebugItemsDataProvider : public UObject, public IStrategyD
 	GENERATED_BODY()
 
 public:
-	explicit UDebugItemsDataProvider(const FObjectInitializer& ObjectInitializer);
-	
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
@@ -37,6 +35,8 @@ public:
 	{
 		return IsValid(DelegateWrapper);
 	}
+
+	virtual void InitializeDataProvider_Implementation() override;
 	
 	virtual UOnDataProviderUpdatedDelegateWrapper* GetOnDataProviderUpdated_Implementation() override
 	{
