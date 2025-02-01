@@ -8,7 +8,7 @@
 /**
  * Wheel layout: all items arranged equally around a fixed 360° circle.
  */
-UCLASS(Blueprintable, EditInlineNew)
+UCLASS(ClassGroup="StrategyUI|RadialLayout|Wheel")
 class STRATEGYUI_API UWheelLayoutStrategy : public URadialLayoutStrategy
 {
 	GENERATED_BODY()

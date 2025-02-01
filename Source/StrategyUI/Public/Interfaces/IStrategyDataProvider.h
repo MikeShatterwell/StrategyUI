@@ -38,7 +38,7 @@ class STRATEGYUI_API UStrategyDataProvider : public UInterface
 	GENERATED_BODY()
 };
 
-class IStrategyDataProvider
+class IStrategyDataProvider : public IInterface
 {
 	GENERATED_BODY()
 

@@ -43,7 +43,6 @@ public:
 #if WITH_EDITOR
 	virtual void ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-	void ConstructDataProviderObject();
 #endif
 
 	/**
@@ -75,6 +74,7 @@ public:
 	TSubclassOf<UObject> DefaultDataProviderClass = nullptr;
 
 #pragma region Public API
+	
 	// ---------------------------------------------------------------------------------------------
 	// Base setters and getters
 	// ---------------------------------------------------------------------------------------------
@@ -92,19 +92,24 @@ public:
 	/** Returns the number of data items currently stored. */
 	UFUNCTION(BlueprintPure, Category="StrategyUI|BaseStrategyWidget")
 	int32 GetItemCount() const { return Items.Num(); }
-
-	// ---------------------------------------------------------------------------------------------
-	// Base virtual functions
-	// ---------------------------------------------------------------------------------------------
+	
 	/**
-	 * Sets the item data to display; automatically chooses wheel/spiral based on RadialSegments.
-	 * These data objects will be passed via IStrategyEntryBase interface to the EntryWidgetClass.
-	 * Then UpdateLayout() will be called automatically to build the visual layout.
+	 * Sets the item data to display.
+	 * - If using MVVM: Bind this to your view model's data in UMG.
+	 * - If not using MVVM: Assign a DefaultDataProviderClass and this widget will automatically fetch data via the IStrategyDataProvider interface.
+	 * - Alternatively, call this directly with your data objects to update the widget manually.
+	 * 
+	 * The provided data objects will be passed via IStrategyEntryBase interface to the assigned EntryWidgetClass.
+	 * 
+	 * Override SetItems_Internal to handle the data in a custom way.
+	 * By default, we initialize the layout strategy and call UpdateVisibleWidgets().
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "StrategyUI|BaseStrategyWidget")
+	UFUNCTION(BlueprintCallable, Category = "StrategyUI|BaseStrategyWidget")
 	void SetItems(const TArray<UObject*>& InItems);
-	virtual void SetItems_Implementation(const TArray<UObject*>& InItems);
 
+	// ---------------------------------------------------------------------------------------------
+	// Base public virtual functions
+	// ---------------------------------------------------------------------------------------------
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
 	virtual void Reset();
 
@@ -116,7 +121,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
 	virtual void ToggleFocusedIndex();
-
 #pragma endregion Public API
 
 protected:
@@ -172,6 +176,10 @@ protected:
 	UFUNCTION()
 	void OnDataProviderUpdated();
 	void RefreshFromProvider();
+	
+	UFUNCTION(BlueprintNativeEvent, Category = "StrategyUI|BaseStrategyWidget")
+	void SetItems_Internal(const TArray<UObject*>& InItems);
+	virtual void SetItems_Internal_Implementation(const TArray<UObject*>& InItems);
 
 	// ---------------------------------------------------------------------------------------------
 	// Runtime Data
@@ -189,6 +197,8 @@ protected:
 	 */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget")
 	TObjectPtr<UObject> DataProvider = nullptr;
+
+	void ConstructDataProviderObject();
 
 	// ---------------------------------------------------------------------------------------------
 	// Entry Widgets & State

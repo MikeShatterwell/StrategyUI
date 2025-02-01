@@ -9,7 +9,7 @@
  * Spiral layout: can handle more items than SegmentCount.
  * Possibly includes a "gap" after the last item.
  */
-UCLASS(Blueprintable, EditInlineNew)
+UCLASS(ClassGroup="StrategyUI|RadialLayout|Spiral")
 class STRATEGYUI_API USpiralLayoutStrategy : public URadialLayoutStrategy
 {
 	GENERATED_BODY()

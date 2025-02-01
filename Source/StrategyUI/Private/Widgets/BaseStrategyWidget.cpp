@@ -21,6 +21,7 @@ UBaseStrategyWidget::UBaseStrategyWidget(const FObjectInitializer& ObjectInitial
 {
 }
 
+#if WITH_EDITOR
 void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const
 {
 	Super::ValidateCompiledDefaults(CompileLog);
@@ -51,13 +52,11 @@ void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& Com
 		}
 	}
 	
-#if WITH_EDITOR
 	// Check if MVVM plugin is loaded
-	if (DataProvider && WITH_MVVM)
+	if (DataProvider && DefaultDataProviderClass && WITH_MVVM)
 	{
 		CompileLog.Warning(FText::FromString(TEXT("You are using the MVVM plugin but have set a DataProvider in BaseStrategyWidget. Consider removing DataProvider and bind SetItems to a view model. Do not use both systems simultaneously.")));
 	}
-#endif
 }
 
 void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -74,21 +73,14 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 		{
 			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
 		}
-	}
 
-	Reset();
-	ConstructDataProviderObject();
-	UpdateVisibleWidgets();
-}
-
-void UBaseStrategyWidget::ConstructDataProviderObject()
-{
-	if (DefaultDataProviderClass)
-	{
-		DataProvider = NewObject<UObject>(this, DefaultDataProviderClass);
-		SetDataProvider(DataProvider);
+		Reset();
+		ConstructDataProviderObject();
+		RefreshFromProvider();
+		UpdateVisibleWidgets();
 	}
 }
+#endif
 
 void UBaseStrategyWidget::NativeConstruct()
 {
@@ -103,6 +95,11 @@ void UBaseStrategyWidget::NativeConstruct()
 	}
 
 	ConstructDataProviderObject();
+}
+
+void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
+{
+	SetItems_Internal(InItems);
 }
 
 void UBaseStrategyWidget::Reset()
@@ -306,7 +303,7 @@ void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
 	}
 }
 
-void UBaseStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
+void UBaseStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
 {
 	Items = InItems;
 
@@ -583,7 +580,7 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 		return;
 	}
 
-	if (!WidgetTree)
+	if (!WidgetTree || IsDesignTime())
 	{
 		return;
 	}
@@ -654,7 +651,6 @@ void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
 	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
 		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
-		RefreshFromProvider();
 	}
 }
 
@@ -674,6 +670,14 @@ void UBaseStrategyWidget::RefreshFromProvider()
 		const TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
 	
 		// Feed them into the existing system
-		SetItems(ProvidedItems); // calls the base strategy widget's SetItems_Implementation which will UpdateVisibleWidgets()
+		SetItems(ProvidedItems);
+	}
+}
+
+void UBaseStrategyWidget::ConstructDataProviderObject()
+{
+	if (DefaultDataProviderClass && !DataProvider)
+	{
+		SetDataProvider(NewObject<UObject>(this, DefaultDataProviderClass));
 	}
 }

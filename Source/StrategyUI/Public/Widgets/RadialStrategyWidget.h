@@ -65,7 +65,6 @@ public:
 	
 #if WITH_EDITOR
 	virtual void ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const override;
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 
@@ -73,7 +72,7 @@ public:
 	// ---------------------------------------------------------------------------------------------
 	// BaseStrategyWidget API Overrides
 	// ---------------------------------------------------------------------------------------------
-	virtual void SetItems_Implementation(const TArray<UObject*>& InItems) override;
+	virtual void SetItems_Internal_Implementation(const TArray<UObject*>& InItems) override;
 	virtual void PositionWidget(int32 GlobalIndex) override;
 	
 	// ---------------------------------------------------------------------------------------------

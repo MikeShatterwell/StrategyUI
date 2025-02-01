@@ -42,17 +42,12 @@ void URadialStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& C
 		CompileLog.Error(FText::FromString(TEXT("Please assign a URadialLayoutStrategy in the details panel!")));
 	}
 }
-
-void URadialStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-}
 #endif
 
 #pragma region Public API
-void URadialStrategyWidget::SetItems_Implementation(const TArray<UObject*>& InItems)
+void URadialStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
 {
-	Super::SetItems_Implementation(InItems);
+	Super::SetItems_Internal_Implementation(InItems);
 
 	ResetInput();
 }

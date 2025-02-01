@@ -58,7 +58,10 @@ public:
 	 * Called by the widget to initialize anything needed upon first assignment.
 	 * // @TODO: refactor to use a "LayoutStrategyHost" interface to avoid direct widget reference
 	 */
-	virtual void InitializeStrategy(UBaseStrategyWidget* OwnerWidget) {};
+	virtual void InitializeStrategy(UBaseStrategyWidget* OwnerWidget)
+	{
+		MaxVisibleEntries = FMath::Clamp(MaxVisibleEntries, 1, MAX_ENTRY_COUNT);
+	};
 
 	/**
 	 * Validates the strategy properties and settings.

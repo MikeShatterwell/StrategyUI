@@ -7,7 +7,7 @@
 #include "RadialLayoutStrategy.generated.h"
 
 
-UCLASS(Abstract, Blueprintable, BlueprintType, EditInlineNew, meta=(DisableNativeTick), ClassGroup="RadialLayout")
+UCLASS(Abstract, ClassGroup="StrategyUI|RadialLayout")
 class STRATEGYUI_API URadialLayoutStrategy : public UBaseLayoutStrategy
 {
 	GENERATED_BODY()
