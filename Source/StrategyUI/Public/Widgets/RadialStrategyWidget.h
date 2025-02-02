@@ -175,9 +175,9 @@ protected:
 
 	
 #pragma region Protected Helper Functions
-	/***********************************************************************************************
-	 * Rotation Handling
-	 ***********************************************************************************************/
+	// ---------------------------------------------------------------------------------------------
+	// Rotation Handling
+	// ---------------------------------------------------------------------------------------------
 	/** Called by HandleInput to apply a direct rotation to CurrentAngle. */
 	void ApplyManualRotation(float DeltaDegrees);
 	
@@ -191,12 +191,9 @@ protected:
 	float ScaleDurationByGapItems(const float FinalDuration) const;
 	
 
-	/***********************************************************************************************
-	 * Item/Widget Handling
-	 ***********************************************************************************************/
-	/** Ensure that only the items in [VisibleStartIndex..] are displayed, reusing or releasing widgets as needed. */
-	//void UpdateVisibleWidgets();
-
+	// ---------------------------------------------------------------------------------------------
+	// Item/Widget Handling
+	// ---------------------------------------------------------------------------------------------
 	/** Computes data for the entry widget to pass to a dynamic material.
 	 *
 	 * This data includes values normalized in [0..1] for straightforward material math.

@@ -99,6 +99,7 @@ void UBaseStrategyWidget::NativeConstruct()
 
 void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	SetItems_Internal(InItems);
 }
 
@@ -112,10 +113,18 @@ void UBaseStrategyWidget::Reset()
 		{
 			OnDataProviderUpdated.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 		}
+		DataProvider = nullptr;
 	}
+
+	SelectedDataIndices.Empty();
+	FocusedGlobalIndex = 0;
+	FocusedDataIndex = INDEX_NONE;
 	
 	EntryWidgetPool.ResetPool();
+	
 	IndexToWidgetMap.Empty();
+	IndexToTagStateMap.Empty();
+	
 	Items.Empty();
 
 	if (CanvasPanel)
@@ -420,6 +429,8 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 
 void UBaseStrategyWidget::ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndices)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	TArray<int32> CurrentIndices;
 	IndexToWidgetMap.GenerateKeyArray(CurrentIndices);
 	for (const int32 OldIndex : CurrentIndices)
@@ -450,6 +461,8 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 
 void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex, UUserWidget* Widget, const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	// Check for transitions and update the state if there was a change
 	if (NewState != OldState)
 	{
@@ -465,6 +478,8 @@ void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex
 
 void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 GlobalIndex)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
 	
 	FGameplayTag NewState;
@@ -610,6 +625,8 @@ void UBaseStrategyWidget::UpdateVisibleWidgets()
 
 void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
 
 	// Set common slot properties
@@ -656,6 +673,7 @@ void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
 
 void UBaseStrategyWidget::OnDataProviderUpdated()
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	// Called when the provider signals data changed
 	RefreshFromProvider();
 }
