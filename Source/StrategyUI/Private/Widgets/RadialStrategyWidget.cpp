@@ -23,14 +23,14 @@ void URadialStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& C
 {
 	Super::ValidateCompiledDefaults(CompileLog);
 
-	if (!EntryWidgetClass)
+	if (!DefaultEntryWidgetClass)
 	{
 		CompileLog.Error(FText::FromString(TEXT("Please assign an EntryWidgetClass in the details panel!")));
 	}
 	else
 	{
 		const UClass* RadialItemEntryInterface = URadialItemEntry::StaticClass();
-		if (!EntryWidgetClass->ImplementsInterface(RadialItemEntryInterface))
+		if (!DefaultEntryWidgetClass->ImplementsInterface(RadialItemEntryInterface))
 		{
 			CompileLog.Error(FText::FromString(TEXT("EntryWidgetClass must implement IRadialItemEntry interface!")));
 		}
@@ -250,6 +250,11 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
+	if (!ensureMsgf(LayoutStrategy, TEXT("No LayoutStrategy assigned!")))
+	{
+		return;
+	}
+
 	// If we have an animation in progress, advance it
 	if (RuntimeScrollingAnimState.bIsAnimating)
 	{
@@ -271,9 +276,9 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	}
 
 	GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
-	
+
 	UpdateFocusIndex();
-	UpdateVisibleWidgets();
+	UpdateWidgets();
 }
 
 int32 URadialStrategyWidget::NativePaint(

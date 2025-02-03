@@ -38,8 +38,6 @@ class STRATEGYUI_API UBaseStrategyWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	explicit UBaseStrategyWidget(const FObjectInitializer& ObjectInitializer);
-
 #if WITH_EDITOR
 	virtual void ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -61,7 +59,7 @@ public:
 
 	/** Custom entry widget class (must implement IStrategyEntryBase). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
-	TSubclassOf<UUserWidget> EntryWidgetClass = nullptr;
+	TSubclassOf<UUserWidget> DefaultEntryWidgetClass = nullptr;
 	
 	/**
 	 * Optional data provider. If set, the widget will automatically fetch
@@ -81,6 +79,8 @@ public:
 	/** 
 	 * Assign a new layout strategy at runtime.
 	 * If the new strategy is valid, we re‐initialize and re‐layout.
+	 *
+	 * @param NewStrategy The new layout strategy instance to assign.
 	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget", meta=(DisplayName="Set Layout Strategy"))
 	void SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy);
@@ -96,7 +96,7 @@ public:
 	/**
 	 * Sets the item data to display.
 	 * - If using MVVM: Bind this to your view model's data in UMG.
-	 * - If not using MVVM: Assign a DefaultDataProviderClass and this widget will automatically fetch data via the IStrategyDataProvider interface.
+	 * - If not using MVVM: Assign a DefaultDataProviderClass or call SetDataProvider(...) and this widget will automatically fetch data via the IStrategyDataProvider interface.
 	 * - Alternatively, call this directly with your data objects to update the widget manually.
 	 * 
 	 * The provided data objects will be passed via IStrategyEntryBase interface to the assigned EntryWidgetClass.
@@ -107,20 +107,45 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "StrategyUI|BaseStrategyWidget")
 	void SetItems(const TArray<UObject*>& InItems);
 
+	/**
+	 * Sets the new data provider for the strategy widget. Unbinds from the existing data provider,
+	 * if any, and initializes and listens to updates from the new data provider.
+	 *
+	 * Any UObject implementing the IStrategyDataProvider interface can be used as a data provider.
+	 *
+	 * @param NewProvider The new object to act as the data provider for this widget.
+	 */
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	void SetDataProvider(UObject* NewProvider);
+
 	// ---------------------------------------------------------------------------------------------
 	// Base public virtual functions
 	// ---------------------------------------------------------------------------------------------
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
 	virtual void Reset();
 
+	/**
+	 * Updates the currently focused index for the widget and handles all related updates, including
+	 * broadcasting changes and refocusing entries based on the provided global focus index.
+	 *
+	 * @param InNewGlobalFocusIndex The new global index to set as the focused index.
+	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Focus")
 	virtual void UpdateFocusedIndex(int32 InNewGlobalFocusIndex);
 
+	/**
+	 * Updates the "selected" state of the associated entry widget and manages the internal selection records.
+	 * Notifies listeners if a selection state changes for a valid data index.
+	 *
+	 * @param InGlobalIndex The global index of the entry to modify the selection state for.
+	 * @param bShouldBeSelected Indicates whether the entry should be marked as selected or not.
+	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
 	virtual void SetSelectedGlobalIndex(int32 InGlobalIndex, bool bShouldBeSelected);
 
+	/** Toggles the selection state of the currently focused data index. */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|Selection")
-	virtual void ToggleFocusedIndex();
+	virtual void ToggleFocusedIndexSelection();
 #pragma endregion Public API
 
 protected:
@@ -152,34 +177,90 @@ protected:
 	/** Release an entry widget back to the pool if no longer needed. */
 	virtual void ReleaseEntryWidget(int32 GlobalIndex);
 
+	/** Release all entry widgets back to the pool that aren't found in the DesiredIndices set. */
 	virtual void ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndices);
 
 	/** Called when building or updating the entry widget for item at 'Index'. */
 	virtual void UpdateEntryWidget(int32 InGlobalIndex);
-	
+
+	/**
+	 * Notifies the entry widget of a state change, updating the state mapping and notifying the widget if it implements IStrategyEntryBase.
+	 *
+	 * @param GlobalIndex The global index identifier for the strategy entry whose state is being changed.
+	 * @param Widget The UI widget associated with the strategy entry.
+	 * @param OldState The previous gameplay tag container state of the strategy entry.
+	 * @param NewState The new gameplay tag container state of the strategy entry.
+	 */
 	virtual void NotifyStrategyEntryStateChange(int32 GlobalIndex, UUserWidget* Widget, const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState);
+
+	/**
+	 * Attempts to handle the state transition of a pooled entry widget based on the visibility
+	 * requirements dictated by the layout strategy's computation.
+	 *
+	 * This method determines whether a specific pooled entry should be in an active or deactivated
+	 * state and updates its lifecycle gameplay tag accordingly.
+	 *
+	 * @param GlobalIndex The unique global index of the pooled entry widget to process.
+	 */
 	virtual void TryHandlePooledEntryStateTransition(int32 GlobalIndex);
-	
+
+	/**
+	 * Updates the lifecycle state tag for a specific entry identified by a global index.
+	 * This method ensures that the specified entry receives the new lifecycle tag and
+	 * adjusts the tag container so that only one "EntryLifecycle" tag is active at any time.
+	 * It also notifies the associated widget of state tag changes if applicable.
+	 *
+	 * @param GlobalIndex The index that uniquely identifies the entry to update.
+	 * @param NewStateTag The new lifecycle state tag to apply to the entry. This tag must
+	 *                    be a child of "StrategyUI.EntryLifecycle.*".
+	 */
 	virtual void UpdateEntryLifecycleTagState(const int32 GlobalIndex, const FGameplayTag& NewStateTag);
+
+	/**
+	 * Updates the interaction tag state for a specific entry identified by its global index.
+	 * Responsible for enabling or disabling interaction tags on the entry and notifying the widget of state changes.
+	 *
+	 * @param GlobalIndex The unique index used to identify the specific entry whose tag state is being updated.
+	 * @param InteractionTag The gameplay tag that represents the specific interaction state to be updated.
+	 * @param bEnable A boolean value indicating whether to enable (true) or disable (false) the specified interaction tag.
+	 */
 	virtual void UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, const bool bEnable);
 
-	virtual void UpdateVisibleWidgets();
+	/**
+	 * Point of entry for updating all entry widgets managed by this widget.
+	 * The main flow is to release any undesired widgets, then update the desired ones.
+	 */
+	virtual void UpdateWidgets();
 
+	/**
+	 * Positions the widget on the canvas panel based on the layout strategy. This is where the entry widget's CanvasSlot is set up.
+	 *
+	 * @param GlobalIndex The global index representing the item to be positioned. Used to compute the widget's location and size within the layout.
+	 */
 	virtual void PositionWidget(int32 GlobalIndex);
 
 	// ---------------------------------------------------------------------------------------------
 	// Data Provider
 	// ---------------------------------------------------------------------------------------------
-	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
-	void SetDataProvider(UObject* NewProvider);
-
+	/** Callback that runs when the data provider signals that its data has been updated. */
 	UFUNCTION()
 	void OnDataProviderUpdated();
+
+	/** Refreshes the widget's data from the data provider by fetching the latest items. */
 	void RefreshFromProvider();
-	
+
+	/**
+	 * Sets new items, initializes the layout strategy, and refreshes the widget.
+	 *
+	 * Call SetItems() as the main entry point for setting new data in the widget. This method
+	 * is intended to be overridden by subclasses to handle the data in a custom way.
+	 *
+	 * @param InItems The array of UObject ptrs representing the data items to be set in the widget.
+	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "StrategyUI|BaseStrategyWidget")
 	void SetItems_Internal(const TArray<UObject*>& InItems);
 	virtual void SetItems_Internal_Implementation(const TArray<UObject*>& InItems);
+	FUserWidgetPool& GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass);
 
 	// ---------------------------------------------------------------------------------------------
 	// Runtime Data
@@ -198,14 +279,23 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget")
 	TObjectPtr<UObject> DataProvider = nullptr;
 
-	void ConstructDataProviderObject();
+	/**
+	 * Constructs and assigns a data provider object using the default class specified in DefaultDataProviderClass.
+	 * Only constructs the DataProvider object if it is not already set and the DefaultDataProviderClass is valid.
+	 */
+	void ConstructDataProviderObjectFromDefaultClass();
 
 	// ---------------------------------------------------------------------------------------------
 	// Entry Widgets & State
 	// ---------------------------------------------------------------------------------------------
-	/** A reusable pool of entry widgets. */
+	/**
+	 * A collection of pools of reusable entry widgets.
+	 * These are mapped by the class of the widget they contain.
+	 * For the majority of cases, there will only be one pool of widgets for one desired class.
+	 * In more complex cases, there may be multiple pools for different classes (e.g., different types of world markers).
+	 */
 	UPROPERTY(Transient)
-	FUserWidgetPool EntryWidgetPool;
+	TMap<TSubclassOf<UUserWidget>, FUserWidgetPool> PooledWidgetsMap;
 
 	/**
 	 * Mapping from "global item index" -> "widget currently displaying that item".
