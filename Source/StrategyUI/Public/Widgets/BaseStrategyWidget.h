@@ -174,6 +174,9 @@ protected:
 	/** Create or retrieve from a pooled widget to display a given item index. */
 	virtual UUserWidget* AcquireEntryWidget(int32 GlobalIndex);
 
+	/** Get or create a pool for a specific widget class. */
+	FUserWidgetPool& GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass);
+
 	/** Release an entry widget back to the pool if no longer needed. */
 	virtual void ReleaseEntryWidget(int32 GlobalIndex);
 
@@ -260,7 +263,6 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "StrategyUI|BaseStrategyWidget")
 	void SetItems_Internal(const TArray<UObject*>& InItems);
 	virtual void SetItems_Internal_Implementation(const TArray<UObject*>& InItems);
-	FUserWidgetPool& GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass);
 
 	// ---------------------------------------------------------------------------------------------
 	// Runtime Data

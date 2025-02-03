@@ -63,6 +63,13 @@ public:
 	 */
 	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
 
+	/**
+	 * Determines if the specified item at the given global index should be visible
+	 * in the radial layout based on its position relative to the visible index range.
+	 *
+	 * @param GlobalIndex The global index of the item to check visibility for.
+	 * @return True if the item is within the visible index range; otherwise, false.
+	 */
 	virtual bool ShouldBeVisible(const int32 GlobalIndex) const override;
 	
 	/**
@@ -99,13 +106,12 @@ public:
 	 * This is useful for calculating the position of the item in the layout.
 	 */
 	virtual float ComputeShortestUnboundAngleForDataIndex(const int32 DataIndex) const;
-	
+
 	/**
 	 * Calculates the distance factor for the given global index.
 	 * This is used to determine how close an item is to the pointer's depth in [0..1] (0 = far, 0.5 = at pointer, 1 = near).
 	 */
 	virtual float CalculateDistanceFactorForGlobalIndex(const int32 GlobalIndex) const;;
-	
 
 	/**
 	 * This is used to determine the layout's radial wedge angle for the item.

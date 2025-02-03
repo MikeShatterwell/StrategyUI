@@ -6,11 +6,13 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(DebugItemsDataProvider)
 
+#if WITH_EDITOR
 void UDebugItemsDataProvider::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	UObject::PostEditChangeProperty(PropertyChangedEvent);
 	GenerateDebugItems();
 }
+#endif
 
 void UDebugItemsDataProvider::GenerateDebugItems()
 {
