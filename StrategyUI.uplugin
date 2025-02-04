@@ -18,6 +18,11 @@
 			"Name": "StrategyUI",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "StrategyUIExamples",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	]
 }
