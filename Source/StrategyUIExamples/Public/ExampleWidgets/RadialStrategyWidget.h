@@ -125,6 +125,7 @@ public:
 
 protected:
 #pragma region UWidget Overrides
+	virtual void OnWidgetRebuilt() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual int32 NativePaint(
 		const FPaintArgs& Args,

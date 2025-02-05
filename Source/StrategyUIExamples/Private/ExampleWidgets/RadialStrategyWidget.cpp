@@ -2,6 +2,7 @@
 
 #include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
+#include <Components/CanvasPanel.h>
 #include <Editor/WidgetCompilerLog.h>
 #include <Fonts/SlateFontInfo.h>
 #include <Styling/CoreStyle.h>
@@ -230,6 +231,13 @@ void URadialStrategyWidget::ScrollToCenterOfFocusedWedgeAnimated(const float Dur
 	BeginAngleAnimation(TargetAngle, Duration);
 }
 
+void URadialStrategyWidget::OnWidgetRebuilt()
+{
+	Super::OnWidgetRebuilt();
+
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+}
+
 #pragma endregion Public API
 
 
@@ -263,7 +271,19 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 		// We can swap to e.g. InterpEaseInOut or InterpSinInOut easily.
 		const float AnimAngle = FMath::Lerp(RuntimeScrollingAnimState.StartAngle, RuntimeScrollingAnimState.EndAngle, Alpha);
 		SetCurrentAngle(AnimAngle);
+		GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
+
+		UpdateFocusIndex();
+		UpdateWidgets();
+		return;
 	}
+
+	static float LastInputAngle = FLT_MAX;
+	if (CurrentPointerAngle == LastInputAngle)
+	{
+		return;
+	}
+	LastInputAngle = CurrentPointerAngle;
 
 	GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
 
@@ -479,9 +499,20 @@ void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 
 void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 {
-	Super::PositionWidget(GlobalIndex);
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+	
+	if (!CanvasPanel)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: CanvasPanel is null!"), __FUNCTION__);
+		return;
+	}
 
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
+	if (Widget->GetParent() != CanvasPanel)
+	{
+		CanvasPanel->AddChildToCanvas(Widget);
+	}
+	
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
 	check(CanvasSlot);
 
@@ -493,14 +524,26 @@ void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	// Position entries at the canvas center
 	if (CanvasSlot->GetPosition() != Center)
 	{
+		CanvasSlot->SetZOrder(0);
+		CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 		CanvasSlot->SetPosition(Center);
 	}
+	
+	const FWidgetTransform& Transform = Widget->GetRenderTransform();
+	const FVector2D& Pivot = Widget->GetRenderTransformPivot();
 
-	Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (Pivot != FVector2D(0.5f, 0.5f))
+	{
+		Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	}
 
-	// Offset with render transforms
+	// Offset with render transforms if needed
 	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-	Widget->SetRenderTranslation(LocalPos);
+	
+	if (Transform.Translation != LocalPos)
+	{
+		Widget->SetRenderTranslation(LocalPos);
+	}
 }
 
 void URadialStrategyWidget::ConstructMaterialData(

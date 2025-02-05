@@ -556,18 +556,21 @@ void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 Global
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
+
+	const FGameplayTag DesiredTag = bShouldBeVisible
+		? StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active
+		: StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
 	
-	FGameplayTag NewState;
-	if (bShouldBeVisible)
+	if (const FGameplayTagContainer* ExistingTagsPtr = IndexToTagStateMap.Find(GlobalIndex))
 	{
-		NewState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
-	}
-	else
-	{
-		NewState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
+		// If we already have the DesiredTag, no need to re‐apply it.
+		if (ExistingTagsPtr->HasTag(DesiredTag))
+		{
+			return;
+		}
 	}
 
-	UpdateEntryLifecycleTagState(GlobalIndex, NewState);
+	UpdateEntryLifecycleTagState(GlobalIndex, DesiredTag);
 }
 
 void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, const FGameplayTag& NewStateTag)
@@ -584,6 +587,12 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 
 	// Get the container for this index
 	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
+
+	if (TagContainer.HasTag(NewStateTag))
+	{
+		return; // No actual change needed
+	}
+	
 	FGameplayTagContainer OldTags = TagContainer;
 
 	// Remove all existing EntryLifecycle tags since they're mutually exclusive
@@ -601,7 +610,15 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 	}
 
 	// Add the new status tag
-	TagContainer.AddTag(NewStateTag);
+	if (!TagContainer.HasTag(NewStateTag))
+	{
+		TagContainer.AddTag(NewStateTag);
+	}
+
+	if (TagContainer == OldTags)
+	{
+		return; // No net change
+	}
 
 	// Notify the widget of the change
 	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
