@@ -15,7 +15,7 @@ enum class EStrategyEntryState : uint8;
  * Feel free to extend this struct with additional data for your own use cases.
  */
 USTRUCT(BlueprintType)
-struct FRadialItemMaterialData
+struct STRATEGYUIEXAMPLES_API FRadialItemMaterialData
 {
 	GENERATED_BODY()
 
