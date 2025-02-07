@@ -36,7 +36,7 @@ public:
 	 * If this method returns nullptr, the widget tag will be used to look up a class in the StrategyUI project settings.
 	 * If no class is found there, the BaseStrategyWidget's default entry widget class will be used.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyWidgetClassProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyWidgetClassProvider")
 	TSubclassOf<UUserWidget> GetEntryWidgetClass() const;
 
 	/**
@@ -45,6 +45,6 @@ public:
 	 * This is used to look up a class in the StrategyUI project settings if GetWidgetClass returns nullptr.
 	 * If no class is found there, the BaseStrategyWidget's default entry widget class will be used.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyWidgetClassProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyWidgetClassProvider")
 	FGameplayTag GetEntryWidgetTag() const;
 };

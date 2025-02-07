@@ -5,6 +5,7 @@
 #include <GameplayTagContainer.h>
 
 #include "Interfaces/ILayoutStrategyHost.h"
+#include "Utils/ReflectedObjectsDebugCategory.h"
 #include "BaseStrategyWidget.generated.h"
 
 class UBaseLayoutStrategy;
@@ -300,21 +301,21 @@ virtual int32 GetNumItems_Implementation() const override { return GetItemCount(
 	 * For the majority of cases, there will only be one pool of widgets for one desired class.
 	 * In more complex cases, there may be multiple pools for different classes (e.g., different types of world markers).
 	 */
-	UPROPERTY(Transient)
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
 	TMap<TSubclassOf<UUserWidget>, FUserWidgetPool> PooledWidgetsMap;
 
 	/**
 	 * Mapping from "global item index" -> "widget currently displaying that item".
 	 * Items outside the visible window won't be in this map.
 	 */
-	UPROPERTY(Transient)
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
 	TMap<int32, TWeakObjectPtr<UUserWidget>> IndexToWidgetMap;
 
 	/**
 	 * Mapping from "global item index" -> "state of the item entry".
 	 * This is used to track whether an item is pooled, deactivated, or active.
 	 */
-	UPROPERTY(Transient)
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
 	TMap<int32, FGameplayTagContainer> IndexToTagStateMap;
 
 	//----------------------------------------------------------------------------------------------

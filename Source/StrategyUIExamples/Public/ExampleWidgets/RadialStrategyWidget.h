@@ -25,27 +25,27 @@ struct FRadialScrollAnimationData
 
 public:
 	// Whether the widget is currently animating a scroll
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	bool bIsAnimating = false;
 
 	// How long the current animation will take (in seconds, if bIsAnimating is true).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	float Duration = 0.f;
 
 	// How long the current animation has been running (in seconds, if bIsAnimating is true).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	float ElapsedTime = 0.f;
 	
 	// The "base" angle at animation start (already unwound to [0..360] in wheel mode, or just stored as-is in spiral mode).
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	float StartAngle = 0.f;
 
 	// The target angle (StartAngle + DeltaAngle) in degrees
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	float EndAngle = 0.f;
 
 	// The difference in degrees from StartAngle to EndAngle
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="RadialStrategyWidget|RuntimeAnimationData")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|RuntimeAnimationData")
 	float DeltaAngle = 0.f;
 };
 

@@ -21,14 +21,14 @@ public:
 	}
 
 	/** If true, we log a warning any time we fail to find a widget class for a given tag. */
-	UPROPERTY(EditAnywhere, Config, Category="Logging")
+	UPROPERTY(EditAnywhere, Config, Category="StrategyUI|Logging")
 	bool bWarnOnMissingClass = true;
 
 	/**
 	 * Maps a specific "key" tag to a widget class (e.g. "StrategyUI.WorldMarker.Friendly" -> W_FriendlyMarkerEntry)
 	 * that the base widget will instantiate if no direct class is provided by the item.
 	 */
-	UPROPERTY(EditAnywhere, Config, Category="WidgetMapping")
+	UPROPERTY(EditAnywhere, Config, Category="StrategyUI|WidgetMapping")
 	TMap<FGameplayTag, TSubclassOf<UUserWidget>> TagToWidgetClassMap;
 
 	virtual FName GetCategoryName() const override

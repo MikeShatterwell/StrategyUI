@@ -17,19 +17,19 @@ class IStrategyEntryBase : public IInterface
 	GENERATED_IINTERFACE_BODY()
 public:
 	/** Called when this entry widget transitions states. */
-	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	UFUNCTION(BlueprintImplementableEvent, Category="StrategyUI|IStrategyEntryBase")
 	void BP_OnStrategyEntryStateTagsChanged(const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState);
 
 	/** Called when the widget is assigned new data */
-	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	UFUNCTION(BlueprintImplementableEvent, Category="StrategyUI|IStrategyEntryBase")
 	void BP_OnStrategyEntryItemAssigned(const UObject* InItem);
 
-	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	UFUNCTION(BlueprintImplementableEvent, Category="StrategyUI|IStrategyEntryBase")
 	void BP_OnItemSelectionChanged(bool bIsSelected);
 
-	UFUNCTION(BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	UFUNCTION(BlueprintImplementableEvent, Category="StrategyUI|IStrategyEntryBase")
 	void BP_OnItemFocusChanged(bool bIsFocused);
 
-	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category="IStrategyEntryBase")
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category="StrategyUI|IStrategyEntryBase")
 	void BP_NotifyEntryClicked();
 };

@@ -22,7 +22,7 @@ public:
 	void GenerateDebugItems();
 
 	/** Number of debug items to generate */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debug")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|Debug")
 	int32 DebugItemCount = 25;
 
 	// ~ Begin IStrategyDataProvider interface

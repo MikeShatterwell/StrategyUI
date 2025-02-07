@@ -46,7 +46,6 @@ public:
 	virtual FVector2D GetItemPosition(const int32 GlobalIndex) const override;
 	virtual int32 FindFocusedGlobalIndex() const override;
 	virtual TSet<int32> ComputeDesiredGlobalIndices() override;
-	virtual FVector2D ComputeEntryWidgetSize(const int32 GlobalIndex) override;
 	virtual int32 GlobalIndexToDataIndex(const int32 GlobalIndex) const override;
 
 	/**

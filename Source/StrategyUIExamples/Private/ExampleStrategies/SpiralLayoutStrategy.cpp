@@ -52,11 +52,6 @@ TSet<int32> USpiralLayoutStrategy::ComputeDesiredGlobalIndices()
 	return DesiredGlobalIndices;
 }
 
-FVector2D USpiralLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)
-{
-	return FVector2D((BaseRadius + SpiralOutwardOffset) * 2.f);
-}
-
 int32 USpiralLayoutStrategy::GlobalIndexToDataIndex(const int32 GlobalIndex) const
 {
 	if (NumItems <= 0)

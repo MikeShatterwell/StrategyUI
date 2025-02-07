@@ -1,5 +1,6 @@
 ﻿#include "Widgets/BaseStrategyWidget.h"
 
+#include <GameplayDebuggerAddonManager.h>
 #include <Components/CanvasPanel.h>
 #include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
@@ -10,9 +11,9 @@
 #include "Interfaces/IStrategyEntryWidgetProvider.h"
 #include "Strategies/BaseLayoutStrategy.h"
 #include "Utils/LogStrategyUI.h"
-#include "Utils/PropertyDebugPaintUtil.h"
 #include "Utils/StrategyUIFunctionLibrary.h"
 #include "Utils/StrategyUIGameplayTags.h"
+#include "Utils/ReflectedObjectsDebugCategory.h"
 
 #define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
 #define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
@@ -91,6 +92,21 @@ void UBaseStrategyWidget::NativeConstruct()
 	}
 
 	TryCreateDefaultDataProvider();
+
+#if WITH_GAMEPLAY_DEBUGGER
+	if (FReflectedObjectsDebugCategory::ActiveInstance.IsValid())
+	{
+		FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(this);
+		if (LayoutStrategy)
+		{
+			FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(LayoutStrategy);
+		}
+
+		TArray<FString> Filters;
+		Filters.Add(TEXT("StrategyUI|*"));
+		FReflectedObjectsDebugCategory::ActiveInstance->SetCategoryFilters(Filters);
+	}
+#endif
 }
 
 void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
@@ -292,7 +308,7 @@ int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& 
 	if (bPaintDebugInfo && LayoutStrategy)
 	{
 		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
-		FLayoutStrategyDebugPaintUtil::DrawLayoutStrategyDebugVisuals(OutDrawElements, AllottedGeometry, LayerId, LayoutStrategy, Center);
+		LayoutStrategy->DrawDebugVisuals(AllottedGeometry, OutDrawElements, LayerId, Center);
 		MaxLayer++;
 	}
 	return MaxLayer;
@@ -726,21 +742,20 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	}
 
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
-
-	// Set common slot properties
-	const FVector2D& EntrySize = GetLayoutStrategyChecked().ComputeEntryWidgetSize(GlobalIndex);
-	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-
+	
 	// Make sure it's actually on the Canvas and prepare to update the slot properties
 	if (Widget->GetParent() != CanvasPanel)
 	{
 		CanvasPanel->AddChildToCanvas(Widget);
 	}
+
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
 	check(CanvasSlot);
-
-	CanvasSlot->SetAutoSize(false);
-	CanvasSlot->SetSize(EntrySize);
+	
+	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+	
+	// Set common slot properties
+	CanvasSlot->SetAutoSize(true); // entry widgets can be any size
 	CanvasSlot->SetZOrder(0);
 	CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 	CanvasSlot->SetPosition(LocalPos);

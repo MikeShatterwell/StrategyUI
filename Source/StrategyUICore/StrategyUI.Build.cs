@@ -40,7 +40,9 @@ public class StrategyUI : ModuleRules
 				"SlateCore",
 				"UMG",
 				"GameplayTags",
-				"DeveloperSettings"
+				"DeveloperSettings",
+				"GameplayDebugger",
+				"InputCore"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

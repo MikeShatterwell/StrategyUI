@@ -12,11 +12,11 @@ class STRATEGYUI_API UStrategyDebugItem : public UObject
 
 public:
 	/** Arbitrary label for debugging. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DebugRadialItem")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|DebugRadialItem")
 	FString DebugLabel;
 
 	/** The item's unique ID. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DebugRadialItem")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|DebugRadialItem")
 	int32 Id = INDEX_NONE;
 	
 	/** If true, this item is valid and has data. */

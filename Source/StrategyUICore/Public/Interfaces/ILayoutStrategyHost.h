@@ -16,6 +16,6 @@ class ILayoutStrategyHost : public IInterface
 	GENERATED_BODY()
 	
 public:
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="LayoutStrategyHost")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|LayoutStrategyHost")
 	int32 GetNumItems() const;
 };

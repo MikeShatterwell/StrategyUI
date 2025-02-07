@@ -73,11 +73,6 @@ TSet<int32> UWheelLayoutStrategy::ComputeDesiredGlobalIndices()
 	return Indices;
 }
 
-FVector2D UWheelLayoutStrategy::ComputeEntryWidgetSize(const int32 GlobalIndex)
-{
-	return FVector2D(BaseRadius * 2.f);
-}
-
 //--------------------------------------------------------------------------
 // RadialLayoutStrategy overrides
 //--------------------------------------------------------------------------

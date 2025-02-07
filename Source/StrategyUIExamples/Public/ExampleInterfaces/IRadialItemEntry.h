@@ -24,6 +24,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float UVCenterX = -1.f;
 
+	// The center of the spiral in this entry’s local UV space (0..1)
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float UVCenterY = -1.f;
 
@@ -46,6 +47,12 @@ public:
 	// Whether this wedge is focused/hovered
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool bIsFocused = false;
+
+	FString ToString() const
+	{
+		return FString::Printf(TEXT("UVCenterX: %.2f, UVCenterY: %.2f, WedgeWidth: %.2f, AngleOffset: %.2f, SpiralMinRadius: %.2f, SpiralMaxRadius: %.2f, DistanceFactor: %.2f, bIsFocused: %s"),
+			UVCenterX, UVCenterY, WedgeWidth, AngleOffset, SpiralMinRadius, SpiralMaxRadius, DistanceFactor, bIsFocused ? TEXT("true") : TEXT("false"));
+	}
 };
 
 UINTERFACE(BlueprintType)

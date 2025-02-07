@@ -43,13 +43,13 @@ public:
 	 * This value is clamped to MAX_ENTRY_COUNT (default 64) to prevent performance issues with an extreme number of widgets.
 	 * If you find yourself needing anywhere near this many entry widgets, reconsider your design.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
 	int32 MaxVisibleEntries = 8;
 
 	/**
 	 * The set of global indices represented in the layout.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category="BaseLayoutStrategy")
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|BaseLayoutStrategy")
 	TSet<int32> DesiredGlobalIndices;
 
 	//--------------------------------------------------------------------------
@@ -85,11 +85,6 @@ public:
 	 * Best to call UpdateVisibleWindow before this to ensure the window is up-to-date.
 	 */
 	virtual TSet<int32> ComputeDesiredGlobalIndices() { return TSet<int32>(); }
-
-	/**
-	 * Computes the size of each entry widget in the layout.
-	 */
-	virtual FVector2D ComputeEntryWidgetSize(const int32 GlobalIndex) { return FVector2D::ZeroVector; };
 
 	/**
 	 * Converts a global index into the actual item index.

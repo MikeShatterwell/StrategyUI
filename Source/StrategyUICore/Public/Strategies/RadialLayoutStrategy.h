@@ -18,11 +18,11 @@ public:
 	// Editable Properties
 	//----------------------------------------------------------------------------------------------
 	/** Base radius for the radial layouts */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RadialStrategy|Layout", meta=(ClampMin="0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StrategyUI|RadialStrategy|Layout", meta=(ClampMin="0.0"))
 	float BaseRadius = 400.f;
 
 	/** Number of radial segments for layout */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RadialStrategy|Layout", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StrategyUI|RadialStrategy|Layout", meta=(ClampMin="1"))
 	int32 RadialSegmentCount = 8;
 
 	/**
@@ -32,7 +32,7 @@ public:
 	 *
 	 * Set this as low as is necessary as it can lead to performance issues with many hidden widgets.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RadialStrategy|Entry", meta=(ClampMin="0"), meta=(ClampMax="10"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategy|Entry", meta=(ClampMin="0"), meta=(ClampMax="10"))
 	int32 NumDeactivatedEntries = 2;
 #pragma endregion Editable Properties
 
@@ -180,29 +180,29 @@ protected:
 	// Runtime Properties
 	//----------------------------------------------------------------------------------------------
 	/** Number of data item objects provided to the layout */
-	UPROPERTY(BlueprintReadOnly, Category = "RadialStrategy|Data")
+	UPROPERTY(BlueprintReadOnly, Category = "StrategyUI|RadialStrategy|Data")
 	int32 NumItems = 0;
 
 	/** Additional gap segments appended after the last item so we can maintain consistent spacing if we have fewer items than segments. */
-	UPROPERTY(BlueprintReadOnly, Category = "RadialStrategy|Layout")
+	UPROPERTY(BlueprintReadOnly, Category = "StrategyUI|RadialStrategy|Layout")
 	int32 GapPaddingSegments = 0;
 
 	/**
 	* The global index representing the head of the "visible window" (for item num > MaxVisibleEntries).
 	* Radial strategies will typically show all items in the window.
 	*/
-	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Layout")
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategy|Layout")
 	int32 VisibleStartIndex = INDEX_NONE;
 
 	/**
 	 * The global index representing the tail of the "visible window" (for item num > MaxVisibleEntries).
 	 * Radial strategies will typically show all items in the window.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Layout")
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategy|Layout")
 	int32 VisibleEndIndex = INDEX_NONE;
 
 	/** Angle difference between each item in the layout. Assumes equidistant segments. */
-	UPROPERTY(BlueprintReadOnly, Category = "RadialStrategy|Layout")
+	UPROPERTY(BlueprintReadOnly, Category = "StrategyUI|RadialStrategy|Layout")
 	float AngularSpacing = 0.f;
 
 	/**
@@ -210,7 +210,7 @@ protected:
 	 *
 	 * This is the angle that determines which item is "focused" and how the layout is rotated.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category="RadialStrategy|Input")
+	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategy|Input")
 	float LatestPointerAngle = 0.f;
 #pragma endregion Runtime Properties
 };

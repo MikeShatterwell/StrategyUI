@@ -22,7 +22,7 @@ class UOnDataProviderUpdatedDelegateWrapper : public UObject
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(BlueprintAssignable, Category = "Delegates")
+	UPROPERTY(BlueprintAssignable, Category = "StrategyUI|Delegates")
 	FOnDataProviderUpdated OnDataProviderUpdatedDelegate;
 };
 
@@ -46,14 +46,14 @@ public:
 	/**
 	 * Return the list of data items (UObjects) that the widget should display.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyDataProvider")
 	TArray<UObject*> GetDataItems() const;
 	
 	/** 
 	 * Return whether the provider is “ready” 
 	 * (in case it’s loading from disk or waiting for a streaming level). 
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyDataProvider")
 	bool IsProviderReady() const;
 
 	/**
@@ -61,13 +61,13 @@ public:
 	 * This is called when the provider is first assigned to a widget.
 	 * Override this to initialize any internal data, (UOnDataProviderUpdatedDelegateWrapper, etc).
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyDataProvider")
 	void InitializeDataProvider();
 
 	/**
 	 * Return a delegate used to notify that data changed.
 	 * The widget can bind to this to call Refresh.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyDataProvider")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyDataProvider")
 	UOnDataProviderUpdatedDelegateWrapper* GetOnDataProviderUpdated();
 };
