@@ -12,8 +12,8 @@
 
 class UBaseLayoutStrategy;
 class UUserWidget;
-class UCanvasPanel;
 class IStrategyDataProvider;
+class SStrategyCanvasPanel;
 
 /**
  * Delegate broadcast when an item gains focus.o
@@ -135,6 +135,7 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	virtual int32 NativePaint(
 		const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
@@ -162,9 +163,6 @@ protected:
 	
 	/** Create (or retrieve from a pool) a widget for the item at GlobalIndex. */
 	virtual UUserWidget* AcquireEntryWidget(int32 GlobalIndex);
-
-	/** Gets or creates a user widget pool for a given widget class. */
-	virtual FUserWidgetPool& GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass);
 
 	/** Releases an entry widget back to the pool if it's no longer needed. */
 	virtual void ReleaseEntryWidget(int32 GlobalIndex);
@@ -253,13 +251,6 @@ protected:
 	//----------------------------------------------------------------------------------------------
 	// UBaseStrategyWidget Properties - Entry Widgets & State
 	//----------------------------------------------------------------------------------------------
-	/**
-	 * A map of widget pools keyed by class. Usually only one pool/class is used,
-	 * but in complex cases multiple types of markers/entries can exist.
-	 */
-	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
-	TMap<TSubclassOf<UUserWidget>, FUserWidgetPool> PooledWidgetsMap;
-
 	/** Maps a "global item index" to the widget that is currently displaying that item (if visible). */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
 	TMap<int32, TWeakObjectPtr<UUserWidget>> IndexToWidgetMap;
@@ -267,6 +258,10 @@ protected:
 	/** Tracks state (active, pooled, etc.) for each global item index. */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
 	TMap<int32, FGameplayTagContainer> IndexToTagStateMap;
+
+	/** We store item positions in a single TMap, then pass them to the SStrategyCanvasPanel in one call. This replaces the "CanvasPanelSlot" usage. */
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
+	TMap<int32, FVector2D> IndexToPositionMap;
 #pragma endregion
 
 #pragma region UBaseStrategyWidget Properties - Focus & Selection
@@ -296,13 +291,17 @@ protected:
 	FStrategyItemSelectedDelegate OnItemSelected;
 #pragma endregion
 
-#pragma region UBaseStrategyWidget Properties - Bound Widgets
+#pragma region UBaseStrategyWidget Properties - Slate
 	/**
-	 * A canvas panel to hold the entry widgets. If not bound in UMG, 
-	 * we create it at runtime and add to the widget tree.
+	 * The custom Slate panel that arranges items in one pass, with multiple pools.
 	 */
-	UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category="StrategyUI|BaseStrategyWidget")
-	TObjectPtr<UCanvasPanel> CanvasPanel = nullptr;
+	TSharedPtr<SStrategyCanvasPanel> StrategyCanvasPanel;
+	
+	/** Cached geometry size for consistent layout math. */
+	mutable FVector2D CachedSize = FVector2D::ZeroVector;
+
+	/** Cached canvas center. */
+	mutable FVector2D Center = FVector2D::ZeroVector;
 #pragma endregion
 
 #pragma region UBaseStrategyWidget - Debug

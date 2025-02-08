@@ -16,6 +16,7 @@
 #include "Utils/StrategyUIFunctionLibrary.h"
 #include "Utils/StrategyUIGameplayTags.h"
 #include "Utils/ReflectedObjectsDebugCategory.h"
+#include "Widgets/SStrategyCanvasPanel.h"
 
 #define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
 #define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) \
@@ -195,22 +196,11 @@ void UBaseStrategyWidget::Reset()
 	SelectedDataIndices.Empty();
 	FocusedGlobalIndex = 0;
 	FocusedDataIndex   = INDEX_NONE;
-
-	for (auto& Pair : PooledWidgetsMap)
-	{
-		FUserWidgetPool& Pool = Pair.Value;
-		Pool.ResetPool();
-	}
-	PooledWidgetsMap.Empty();
-
 	IndexToWidgetMap.Empty();
 	IndexToTagStateMap.Empty();
+	IndexToPositionMap.Empty();
 	Items.Empty();
 
-	if (CanvasPanel)
-	{
-		CanvasPanel->ClearChildren();
-	}
 
 #if WITH_GAMEPLAY_DEBUGGER
 	if (FReflectedObjectsDebugCategory::ActiveInstance.IsValid())
@@ -361,20 +351,34 @@ void UBaseStrategyWidget::NativeDestruct()
 
 TSharedRef<SWidget> UBaseStrategyWidget::RebuildWidget()
 {
-	if (!WidgetTree)
+	if (IsDesignTime())
 	{
-		return Super::RebuildWidget();
+		return SNew(SSpacer);
 	}
-
-	// If there's no RootWidget or BindWidget, create a new CanvasPanel
-	if (!WidgetTree->RootWidget && !CanvasPanel)
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		CanvasPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
-		WidgetTree->RootWidget = CanvasPanel;
-		Invalidate(EInvalidateWidget::LayoutAndVolatility);
+		UE_LOG(LogStrategyUI, Error, TEXT("%s: No valid world found!"), *GetName());
+		return SNew(SSpacer);
+	}
+	APlayerController* PC = GetOwningLocalPlayer()->GetPlayerController(World);
+	if (!PC)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%s: No valid player controller found!"), *GetName());
+		return SNew(SSpacer);
 	}
 	
-	return Super::RebuildWidget();
+	StrategyCanvasPanel = SNew(SStrategyCanvasPanel);
+	StrategyCanvasPanel->InitializePools(World, PC);
+
+	return StrategyCanvasPanel.ToSharedRef();
+}
+
+void UBaseStrategyWidget::ReleaseSlateResources(bool bReleaseChildren)
+{
+	Super::ReleaseSlateResources(bReleaseChildren);
+
+	StrategyCanvasPanel.Reset();
 }
 
 int32 UBaseStrategyWidget::NativePaint(
@@ -396,11 +400,16 @@ int32 UBaseStrategyWidget::NativePaint(
 		InWidgetStyle,
 		bParentEnabled
 	);
+	
+	if (CachedSize != AllottedGeometry.GetLocalSize())
+	{
+		CachedSize = AllottedGeometry.GetLocalSize();
+		Center = CachedSize * 0.5f;
+	}
 
 	// Optional debug drawing
 	if (bPaintDebugInfo && LayoutStrategy)
 	{
-		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
 		LayoutStrategy->DrawDebugVisuals(AllottedGeometry, OutDrawElements, MaxLayer, Center);
 		MaxLayer++;
 	}
@@ -413,6 +422,11 @@ int32 UBaseStrategyWidget::NativePaint(
 UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	if (!ensureAlwaysMsgf(StrategyCanvasPanel.IsValid(), TEXT("No StrategyCanvasPanel found!")))
+	{
+		return nullptr;
+	}
 
 	// (1) If a widget already exists for this index, reuse it
 	if (const TWeakObjectPtr<UUserWidget>* ExistingPtr = IndexToWidgetMap.Find(GlobalIndex))
@@ -475,8 +489,7 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	}
 
 	// (4) Spawn from the pool
-	FUserWidgetPool& EntryWidgetPool = GetOrCreatePoolForClass(DesiredClass);
-	UUserWidget* NewWidget = EntryWidgetPool.GetOrCreateInstance(DesiredClass);
+	UUserWidget* NewWidget = StrategyCanvasPanel->AcquireEntryWidget(DesiredClass, GlobalIndex);
 	check(NewWidget);
 
 	UE_LOG(LogStrategyUI, Verbose, TEXT("Creating new widget %s for global index %d"), *NewWidget->GetName(), GlobalIndex);
@@ -513,26 +526,14 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	return NewWidget;
 }
 
-FUserWidgetPool& UBaseStrategyWidget::GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass)
-{
-	if (!ensureMsgf(WidgetClass, TEXT("%hs called with nullptr WidgetClass!"), __FUNCTION__))
-	{
-		static FUserWidgetPool NullPool;
-		return NullPool;
-	}
-
-	if (FUserWidgetPool* ExistingPool = PooledWidgetsMap.Find(WidgetClass))
-	{
-		return *ExistingPool;
-	}
-
-	FUserWidgetPool& NewPool = PooledWidgetsMap.Add(WidgetClass, FUserWidgetPool(*this));
-	return NewPool;
-}
-
 void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	if (!ensureAlwaysMsgf(StrategyCanvasPanel.IsValid(), TEXT("No StrategyCanvasPanel found!")))
+	{
+		return;
+	}
 
 	if (const TWeakObjectPtr<UUserWidget>* Ptr = IndexToWidgetMap.Find(GlobalIndex))
 	{
@@ -540,23 +541,6 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 		{
 			if (UUserWidget* Widget = Ptr->Get())
 			{
-				TSubclassOf<UUserWidget> ActualClass = Widget->GetClass();
-				if (FUserWidgetPool* PoolPtr = PooledWidgetsMap.Find(ActualClass))
-				{
-					PoolPtr->Release(Widget);
-					UE_LOG(LogStrategyUI, Verbose, TEXT("Released widget for global index %d"), GlobalIndex);
-				}
-				else
-				{
-					UE_LOG(
-						LogStrategyUI,
-						Error,
-						TEXT("%hs: No existing pool found for widget class %s!"),
-						__FUNCTION__,
-						*ActualClass->GetName()
-					);
-				}
-
 				// Transition it back to "Pooled" in IndexToTagStateMap
 				if (IndexToTagStateMap.Contains(GlobalIndex))
 				{
@@ -574,8 +558,10 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 			}
 		}
 
+		StrategyCanvasPanel->ReleaseEntryWidget(GlobalIndex);
 		IndexToWidgetMap.Remove(GlobalIndex);
 		IndexToTagStateMap.Remove(GlobalIndex);
+		IndexToPositionMap.Remove(GlobalIndex);
 	}
 }
 
@@ -756,8 +742,9 @@ void UBaseStrategyWidget::UpdateWidgets()
 		return;
 	}
 
-	if (!WidgetTree || IsDesignTime())
+	if (!StrategyCanvasPanel.IsValid())
 	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: No StrategyCanvasPanel found!"), __FUNCTION__);
 		return;
 	}
 
@@ -774,40 +761,49 @@ void UBaseStrategyWidget::UpdateWidgets()
 	// 1) Release old widgets not in DesiredIndices
 	ReleaseUndesiredWidgets(DesiredIndices);
 
-	// 2) Create/update each desired widget
-	for (const int32 GlobalIndex : DesiredIndices)
+	// We'll fill these structures so we can do a single call to UpdateItemData
+	TArray<int32> FinalIndices;
+	FinalIndices.Reserve(DesiredIndices.Num());
+
+	TMap<int32, bool> IndexToVisibilityMap;
+	TMap<int32, float> IndexToDepthMap;
+
+	// 5) For each desired GlobalIndex
+	for (int32 GlobalIndex : DesiredIndices)
 	{
+		// (a) Possibly transition from "Pooled" to "Active" or "Deactivated"
 		TryHandlePooledEntryStateTransition(GlobalIndex);
-		PositionWidget(GlobalIndex);
+
+		// (b) Determine final position via layout
+		PositionWidget(GlobalIndex); 
+
+		// (c) Acquire / update the widget
 		UpdateEntryWidget(GlobalIndex);
+
+		// (d) Decide if it's visible and possibly compute a depth or z‐order
+		const bool bIsVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
+		const float DepthValue = 0.f; // or some distance from camera, etc.
+
+		// (e) Fill out the arrays/maps for a single pass in the Slate panel
+		FinalIndices.Add(GlobalIndex);
+		IndexToVisibilityMap.Add(GlobalIndex, bIsVisible);
+		IndexToDepthMap.Add(GlobalIndex, DepthValue);
 	}
+
+	// 6) Finally, pass all data to the panel in one call
+	StrategyCanvasPanel->UpdateChildrenData(
+		FinalIndices,
+		IndexToPositionMap,      // TMap<int32, FVector2D>
+		IndexToVisibilityMap,    // TMap<int32, bool>
+		IndexToDepthMap          // TMap<int32, float>
+	);
 }
 
 void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	if (!CanvasPanel)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%hs: CanvasPanel is null!"), __FUNCTION__);
-		return;
-	}
-
-	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
-	if (Widget->GetParent() != CanvasPanel)
-	{
-		CanvasPanel->AddChildToCanvas(Widget);
-	}
-
-	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
-	check(CanvasSlot);
-
-	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-
-	CanvasSlot->SetAutoSize(true);
-	CanvasSlot->SetZOrder(0);
-	CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-	CanvasSlot->SetPosition(LocalPos);
+	const FVector2D& ItemLocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex) + Center;
+	IndexToPositionMap.Add(GlobalIndex, ItemLocalPos);
 }
 #pragma endregion EntryWidgetsPoolAndHandling
 

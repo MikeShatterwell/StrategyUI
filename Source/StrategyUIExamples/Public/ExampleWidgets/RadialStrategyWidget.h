@@ -70,7 +70,6 @@ public:
 
 	virtual void UpdateEntryWidget(int32 InGlobalIndex) override;
 	virtual void UpdateWidgets() override;
-	virtual void PositionWidget(int32 GlobalIndex) override;
 
 	virtual void SetItems_Internal_Implementation(const TArray<UObject*>& InItems) override;
 #pragma endregion
@@ -200,12 +199,6 @@ protected:
 	/** Stores runtime scrolling animation parameters. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|RadialStrategyWidget|Animation", meta=(AllowPrivateAccess="true"))
 	FRadialScrollAnimationData RuntimeScrollingAnimState;
-
-	/** Cached geometry size for consistent layout math. */
-	mutable FVector2D CachedSize = FVector2D::ZeroVector;
-
-	/** Cached canvas center. */
-	mutable FVector2D Center = FVector2D::ZeroVector;
 
 	/** Flag set when at least one entry widget has valid geometry. */
 	mutable bool bAreChildrenReady = false;

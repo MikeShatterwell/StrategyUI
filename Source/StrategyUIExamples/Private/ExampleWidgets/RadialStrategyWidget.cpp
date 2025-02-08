@@ -53,54 +53,6 @@ void URadialStrategyWidget::UpdateWidgets()
 	Super::UpdateWidgets();
 }
 
-void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	if (Center.IsZero())
-	{
-		return;
-	}
-	
-	if (!CanvasPanel)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%hs: CanvasPanel is null!"), __FUNCTION__);
-		return;
-	}
-
-	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
-	if (Widget->GetParent() != CanvasPanel)
-	{
-		CanvasPanel->AddChildToCanvas(Widget);
-	}
-	
-	const FVector2D& Pivot = Widget->GetRenderTransformPivot();
-	if (Pivot != FVector2D(0.5f, 0.5f))
-	{
-		Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
-	}
-	
-	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
-	check(CanvasSlot);
-
-	// Position entries at the canvas center
-	if (CanvasSlot->GetPosition() != Center)
-	{
-		CanvasSlot->SetAutoSize(true);
-		CanvasSlot->SetZOrder(0);
-		CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-		CanvasSlot->SetPosition(Center);
-	}
-
-	// Offset with render transforms
-	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-	const FWidgetTransform& Transform = Widget->GetRenderTransform();
-	if (Transform.Translation != LocalPos)
-	{
-		Widget->SetRenderTranslation(LocalPos);
-	}
-}
-
 void URadialStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
 {
 	Super::SetItems_Internal_Implementation(InItems);
@@ -360,12 +312,6 @@ int32 URadialStrategyWidget::NativePaint(
 		bParentEnabled
 	);
 
-	if (CachedSize != AllottedGeometry.GetLocalSize())
-	{
-		CachedSize = AllottedGeometry.GetLocalSize();
-		Center = CachedSize * 0.5f;
-	}
-
 	if (!bPaintDebugInfo || !LayoutStrategy)
 	{
 		return MaxLayer;
@@ -532,9 +478,8 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// 1) Figure out the wedge’s desired “widget size” 
 	// -------------------------------------------------------------------
 	const FVector2D EntrySize = EntryWidget->GetDesiredSize();
-	const FVector2D ShortestSide = FVector2D(EntrySize.GetMin());
 	// We'll use this same size below to compute radius in normalized [0..1].
-	if (ShortestSide.Length() < KINDA_SMALL_NUMBER)
+	if (EntrySize.Length() < KINDA_SMALL_NUMBER)
 	{
 		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Entry widget %s has a zero size! Make sure at least one prepass has occured, otherwise the widget won't have valid geometry."), __FUNCTION__, *EntryWidget->GetName());
 		return;
@@ -574,24 +519,17 @@ void URadialStrategyWidget::ConstructMaterialData(
 	float UVCenterX = 0.5f;
 	float UVCenterY = 0.5f;
 	
-	if (const UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(EntryWidget->Slot))
+	const FVector2D& SlotPos = IndexToPositionMap.FindChecked(InGlobalIndex);
+	// Where does the widget’s top-left corner end up in container coords?
+	const FVector2D WidgetTopLeftInContainer = SlotPos - (EntrySize * 0.5f);
+	const FVector2D& CenterInWidgetLocal = 	Center - WidgetTopLeftInContainer;
+
+	// Finally, to convert from local pixel coords -> UV [0..1], 
+	// we divide by the widget’s size:
+	if (EntrySize.X > KINDA_SMALL_NUMBER && EntrySize.Y > KINDA_SMALL_NUMBER)
 	{
-		const FVector2D& SlotPos = CanvasSlot->GetPosition();
-		const FVector2D& Pivot = EntryWidget->GetRenderTransformPivot();
-
-		const FVector2D& RenderTranslation = EntryWidget->GetRenderTransform().Translation;
-
-		// Where does the widget’s top-left corner end up in container coords?
-		const FVector2D& WidgetTopLeftInContainer =	(SlotPos	- (Pivot * EntrySize)) + RenderTranslation;
-		const FVector2D& CenterInWidgetLocal = 	Center - WidgetTopLeftInContainer;
-
-		// Finally, to convert from local pixel coords -> UV [0..1], 
-		// we divide by the widget’s size:
-		if (ShortestSide.X > KINDA_SMALL_NUMBER && ShortestSide.Y > KINDA_SMALL_NUMBER)
-		{
-			UVCenterX = CenterInWidgetLocal.X / ShortestSide.X;
-			UVCenterY = CenterInWidgetLocal.Y / ShortestSide.X;
-		}
+		UVCenterX = CenterInWidgetLocal.X / EntrySize.X;
+		UVCenterY = CenterInWidgetLocal.Y / EntrySize.X;
 	}
 
 	// -------------------------------------------------------------------
@@ -602,8 +540,8 @@ void URadialStrategyWidget::ConstructMaterialData(
 	const float MinRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMinRadius();
 	const float MaxRadiusPx = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetMaxRadius();
 
-	const float SpiralMinRadiusN = MinRadiusPx / ShortestSide.X;
-	const float SpiralMaxRadiusN = MaxRadiusPx / ShortestSide.X;
+	const float SpiralMinRadiusN = MinRadiusPx / EntrySize.X;
+	const float SpiralMaxRadiusN = MaxRadiusPx / EntrySize.X;
 
 	// -------------------------------------------------------------------
 	// 5) Fill in the final material data
