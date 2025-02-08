@@ -1,10 +1,9 @@
-﻿// StrategyUI.cpp
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
 
 #include "StrategyUI.h"
 #include <Modules/ModuleManager.h>
 
 #if WITH_GAMEPLAY_DEBUGGER
-#include <GameplayDebuggerAddonManager.h>
 #include <GameplayDebugger.h>
 
 #include "Utils/ReflectedObjectsDebugCategory.h"

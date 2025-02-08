@@ -1,4 +1,6 @@
-﻿#include "ExampleWidgets/RadialStrategyWidget.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "ExampleWidgets/RadialStrategyWidget.h"
 
 #include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
@@ -17,11 +19,6 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RadialStrategyWidget)
 
-URadialStrategyWidget::URadialStrategyWidget(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-}
-
 #if WITH_EDITOR
 void URadialStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const
 {
@@ -35,14 +32,85 @@ void URadialStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& C
 }
 #endif
 
-#pragma region Public API
+#pragma region BaseStrategyWidget API Overrides
+void URadialStrategyWidget::Reset()
+{
+	ResetInput();
+	bAreChildrenReady = false;
+	Super::Reset();
+}
+
+void URadialStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
+{
+	Super::UpdateEntryWidget(InGlobalIndex);
+	SyncMaterialData(InGlobalIndex);
+}
+
+void URadialStrategyWidget::UpdateWidgets()
+{
+	GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
+	UpdateFocusIndex();
+	Super::UpdateWidgets();
+}
+
+void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	if (Center.IsZero())
+	{
+		return;
+	}
+	
+	if (!CanvasPanel)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: CanvasPanel is null!"), __FUNCTION__);
+		return;
+	}
+
+	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
+	if (Widget->GetParent() != CanvasPanel)
+	{
+		CanvasPanel->AddChildToCanvas(Widget);
+	}
+	
+	const FVector2D& Pivot = Widget->GetRenderTransformPivot();
+	if (Pivot != FVector2D(0.5f, 0.5f))
+	{
+		Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	}
+	
+	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
+	check(CanvasSlot);
+
+	// Position entries at the canvas center
+	if (CanvasSlot->GetPosition() != Center)
+	{
+		CanvasSlot->SetAutoSize(true);
+		CanvasSlot->SetZOrder(0);
+		CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+		CanvasSlot->SetPosition(Center);
+	}
+
+	// Offset with render transforms
+	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+	const FWidgetTransform& Transform = Widget->GetRenderTransform();
+	if (Transform.Translation != LocalPos)
+	{
+		Widget->SetRenderTranslation(LocalPos);
+	}
+}
+
 void URadialStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
 {
 	Super::SetItems_Internal_Implementation(InItems);
 
 	ResetInput();
 }
+#pragma endregion
 
+
+#pragma region RadialSpiralWidget API
 void URadialStrategyWidget::HandleStickInput(const FVector2D& Delta)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
@@ -129,16 +197,24 @@ void URadialStrategyWidget::HandleMouseInput(const FVector2D& InMouseScreenPos)
 	SetCurrentAngle(WorkingAngle);
 }
 
+void URadialStrategyWidget::ResetInput()
+{
+	// @TODO: Consider a better cleanup and init flow in case new data comes in at runtime and we need to reset the layout
+
+	RuntimeScrollingAnimState.bIsAnimating = false;
+	SetCurrentAngle(0.0f);
+	UpdateFocusedIndex(INDEX_NONE);
+}
+
+void URadialStrategyWidget::UpdateFocusIndex()
+{
+	const int32 NewGlobalFocusIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndex();
+	UpdateFocusedIndex(NewGlobalFocusIndex);
+}
+
 void URadialStrategyWidget::StepIndex(const int32 Delta)
 {
 	StepIndexAnimated(Delta);
-}
-
-float URadialStrategyWidget::ScaleDurationByGapItems(const float InitialDuration) const
-{
-	const int32 NumGapItems = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetGapSegments();
-	const float FinalDuration = InitialDuration * (1.f + NumGapItems);
-	return FinalDuration;
 }
 
 void URadialStrategyWidget::StepIndexAnimated(const int32 Delta, const float Duration)
@@ -183,22 +259,6 @@ void URadialStrategyWidget::ScrollToItem(const int32 DataIndex)
 	SetCurrentAngle(DataIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing());
 }
 
-
-void URadialStrategyWidget::ResetInput()
-{
-	// @TODO: Consider a better cleanup and init flow in case new data comes in at runtime and we need to reset the layout
-
-	RuntimeScrollingAnimState.bIsAnimating = false;
-	SetCurrentAngle(0.0f);
-	UpdateFocusedIndex(INDEX_NONE);
-}
-
-void URadialStrategyWidget::UpdateFocusIndex()
-{
-	const int32 NewGlobalFocusIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().FindFocusedGlobalIndex();
-	UpdateFocusedIndex(NewGlobalFocusIndex);
-}
-
 void URadialStrategyWidget::ScrollToItemAnimated(const int32 DataIndex, const float Duration)
 {
 	if (!Items.IsValidIndex(DataIndex))
@@ -230,18 +290,10 @@ void URadialStrategyWidget::ScrollToCenterOfFocusedWedgeAnimated(const float Dur
 	const float TargetAngle = FocusedDataIndex * GetLayoutStrategyChecked<URadialLayoutStrategy>().GetAngularSpacing();
 	BeginAngleAnimation(TargetAngle, Duration);
 }
-
-void URadialStrategyWidget::OnWidgetRebuilt()
-{
-	Super::OnWidgetRebuilt();
-
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-}
-
-#pragma endregion Public API
+#pragma endregion
 
 
-#pragma region UWidget Overrides
+#pragma region UUserWidget & UWidget Overrides
 void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
@@ -271,23 +323,18 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 		// We can swap to e.g. InterpEaseInOut or InterpSinInOut easily.
 		const float AnimAngle = FMath::Lerp(RuntimeScrollingAnimState.StartAngle, RuntimeScrollingAnimState.EndAngle, Alpha);
 		SetCurrentAngle(AnimAngle);
-		GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
-
-		UpdateFocusIndex();
 		UpdateWidgets();
 		return;
 	}
-
+	
 	static float LastInputAngle = FLT_MAX;
-	if (CurrentPointerAngle == LastInputAngle)
+	if (CurrentPointerAngle == LastInputAngle && bAreChildrenReady)
 	{
+		// Avoid updating the layout if the angle hasn't changed, improving idle performance
 		return;
 	}
 	LastInputAngle = CurrentPointerAngle;
 
-	GetLayoutStrategyChecked<URadialLayoutStrategy>().SetPointerAngle(CurrentPointerAngle);
-
-	UpdateFocusIndex();
 	UpdateWidgets();
 }
 
@@ -330,18 +377,17 @@ int32 URadialStrategyWidget::NativePaint(
 	
 	return MaxLayer;
 }
-#pragma endregion UWidget Overrides
+#pragma endregion
 
 
 
-#pragma region Debug Drawing
+#pragma region URadialStrategyWidget - Debug Drawing
 #if !UE_BUILD_SHIPPING
 void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, const int32 LayerId) const
 {
 	// How many data items we want to see around the visible window
 	const int32 NumDeactivatedEntries = GetLayoutStrategyChecked<URadialLayoutStrategy>().NumDeactivatedEntries;
 
-	// @TODO: Clean this up
 	TSet<int32> DesiredIndices = GetLayoutStrategyChecked<URadialLayoutStrategy>().ComputeDesiredGlobalIndices();
 	
 	const int32 VisibleStartIndex = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetVisibleStartIndex();
@@ -400,12 +446,12 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 			}
 
 			const FVector2D ScreenPos = Center + LocalPos;
-			FSlateLayoutTransform LayoutXform(1.f, ScreenPos);
+			FSlateLayoutTransform LayoutTransform(1.f, ScreenPos);
 
 			FSlateDrawElement::MakeText(
 				OutDrawElements,
 				LayerId,
-				AllottedGeometry.ToPaintGeometry(LayoutXform),
+				AllottedGeometry.ToPaintGeometry(LayoutTransform),
 				FText::FromString(DebugString),
 				FSlateFontInfo(FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf"), 10),
 				ESlateDrawEffect::None,
@@ -415,20 +461,9 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 	}
 }
 #endif
-#pragma endregion Debug Drawing
+#pragma endregion
 
-
-#pragma region Protected Helper Functions
-void URadialStrategyWidget::AddRotation_Internal(const float DeltaDegrees)
-{
-	if (FMath::IsNearlyZero(DeltaDegrees))
-	{
-		return;
-	}
-
-	SetCurrentAngle(CurrentPointerAngle += DeltaDegrees);
-}
-
+#pragma region URadialStrategyWidget Functions - Rotation Handling
 void URadialStrategyWidget::SetCurrentAngle(const float InNewAngle)
 {
 	CurrentPointerAngle = InNewAngle;
@@ -445,6 +480,16 @@ void URadialStrategyWidget::ApplyManualRotation(const float DeltaDegrees)
 	{
 		SetCurrentAngle(CurrentPointerAngle + DeltaDegrees);
 	}
+}
+
+void URadialStrategyWidget::AddRotation_Internal(const float DeltaDegrees)
+{
+	if (FMath::IsNearlyZero(DeltaDegrees))
+	{
+		return;
+	}
+
+	SetCurrentAngle(CurrentPointerAngle += DeltaDegrees);
 }
 
 void URadialStrategyWidget::BeginAngleAnimation(const float InTargetAngle, const float Duration)
@@ -466,97 +511,38 @@ void URadialStrategyWidget::BeginAngleAnimation(const float InTargetAngle, const
 	}
 }
 
-void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
+float URadialStrategyWidget::ScaleDurationByGapItems(const float InitialDuration) const
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
-	
-	const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
-	if (GlobalIndexKey == nullptr || !Widget)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%hs: Invalid widget or index"), __FUNCTION__);
-		return;
-	}
-
-	const int32 GlobalIndex = *GlobalIndexKey;
-	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-	const bool bIsFocused = DataIndex == FocusedDataIndex;
-	const FGameplayTagContainer& ItemState = IndexToTagStateMap.FindChecked(GlobalIndex);
-
-	if (Widget->Implements<URadialItemEntry>())
-	{
-		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
-		if (ItemState.HasTag(ActiveState))
-		{
-			// Only update material data for active entries 
-			FRadialItemMaterialData MaterialData;
-			ConstructMaterialData(Widget, GlobalIndex, bIsFocused, MaterialData);
-			UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Syncing material data %s for widget %s"), *MaterialData.ToString(), *Widget->GetName());
-			IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
-		}
-	}
+	const int32 NumGapItems = GetLayoutStrategyChecked<URadialLayoutStrategy>().GetGapSegments();
+	const float FinalDuration = InitialDuration * (1.f + NumGapItems);
+	return FinalDuration;
 }
+#pragma endregion
 
-void URadialStrategyWidget::PositionWidget(const int32 GlobalIndex)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-
-	if (Center.IsZero())
-	{
-		return;
-	}
-	
-	if (!CanvasPanel)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%hs: CanvasPanel is null!"), __FUNCTION__);
-		return;
-	}
-
-	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
-	if (Widget->GetParent() != CanvasPanel)
-	{
-		CanvasPanel->AddChildToCanvas(Widget);
-	}
-	
-	const FVector2D& Pivot = Widget->GetRenderTransformPivot();
-	if (Pivot != FVector2D(0.5f, 0.5f))
-	{
-		Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
-	}
-	
-	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
-	check(CanvasSlot);
-
-	// Position entries at the canvas center
-	if (CanvasSlot->GetPosition() != Center)
-	{
-		CanvasSlot->SetAutoSize(true);
-		CanvasSlot->SetZOrder(0);
-		CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-		CanvasSlot->SetPosition(Center);
-	}
-
-	// Offset with render transforms
-	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-	const FWidgetTransform& Transform = Widget->GetRenderTransform();
-	if (Transform.Translation != LocalPos)
-	{
-		Widget->SetRenderTranslation(LocalPos);
-	}
-}
-
+#pragma region URadialStrategyWidget Functions - Radial Material
 void URadialStrategyWidget::ConstructMaterialData(
 	const UUserWidget* EntryWidget,
 	const int32 InGlobalIndex,
-	const bool bIsFocused,
 	FRadialItemMaterialData& OutMaterialData
 ) const
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	// -------------------------------------------------------------------
-	// 1) Compute radial angles
+	// 1) Figure out the wedge’s desired “widget size” 
+	// -------------------------------------------------------------------
+	const FVector2D EntrySize = EntryWidget->GetDesiredSize();
+	const FVector2D ShortestSide = FVector2D(EntrySize.GetMin());
+	// We'll use this same size below to compute radius in normalized [0..1].
+	if (ShortestSide.Length() < KINDA_SMALL_NUMBER)
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Entry widget %s has a zero size! Make sure at least one prepass has occured, otherwise the widget won't have valid geometry."), __FUNCTION__, *EntryWidget->GetName());
+		return;
+	}
+	bAreChildrenReady = true; // If one widget is ready (aka has a valid size), consider them all ready
+
+	// -------------------------------------------------------------------
+	// 2) Compute radial angles
 	// -------------------------------------------------------------------
 	const float ItemAngleDeg = GetLayoutStrategyChecked<URadialLayoutStrategy>().CalculateItemAngleDegreesForGlobalIndex(InGlobalIndex);
 
@@ -581,21 +567,7 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// Convert angles to [0..1] for the material
 	const float AngleOffsetN = GappedStartDeg / 360.f;
 	const float WedgeWidthN  = WedgeWidthDeg  / 360.f;
-
-	// -------------------------------------------------------------------
-	// 2) Figure out the wedge’s desired “widget size” 
-	//    (the size assigned in PositionWidget).
-	// -------------------------------------------------------------------
-	const FVector2D EntrySize = EntryWidget->GetDesiredSize();//GetLayoutStrategyChecked().ComputeEntryWidgetSize(InGlobalIndex);
-	FVector2D ShortestSide = FVector2D(EntrySize.GetMin());
-	// We'll use this same size below to compute radius in normalized [0..1].
-	float HalfEntryDim = FMath::Min(ShortestSide.X, ShortestSide.Y);
-	if (ShortestSide.Length() < KINDA_SMALL_NUMBER)
-	{
-		ShortestSide.X = 1.f;
-		ShortestSide.Y = 1.f;
-	}
-
+	
 	// -------------------------------------------------------------------
 	// 3) Manually compute the container center in this widget’s local coords
 	// -------------------------------------------------------------------
@@ -644,14 +616,37 @@ void URadialStrategyWidget::ConstructMaterialData(
 	MatData.SpiralMinRadius = SpiralMinRadiusN;
 	MatData.SpiralMaxRadius = SpiralMaxRadiusN;
 	MatData.DistanceFactor  = DistanceFactor;
-	MatData.bIsFocused      = bIsFocused;
 
 	OutMaterialData = MatData;
 }
 
-void URadialStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
+void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 {
-	Super::UpdateEntryWidget(InGlobalIndex);
-	SyncMaterialData(InGlobalIndex);
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
+
+	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
+	
+	const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
+	if (GlobalIndexKey == nullptr || !Widget)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: Invalid widget or index"), __FUNCTION__);
+		return;
+	}
+
+	const int32 GlobalIndex = *GlobalIndexKey;
+	const FGameplayTagContainer& ItemState = IndexToTagStateMap.FindChecked(GlobalIndex);
+
+	if (Widget->Implements<URadialItemEntry>())
+	{
+		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
+		if (ItemState.HasTag(ActiveState))
+		{
+			// Only update material data for active entries 
+			FRadialItemMaterialData MaterialData;
+			ConstructMaterialData(Widget, GlobalIndex, MaterialData);
+			UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Syncing material data %s for widget %s"), *MaterialData.ToString(), *Widget->GetName());
+			IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
+		}
+	}
 }
-#pragma endregion Protected Helper Functions
+#pragma endregion

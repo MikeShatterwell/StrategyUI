@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#pragma once
 
 #include <CoreMinimal.h>
 
@@ -13,7 +15,6 @@ class STRATEGYUI_API URadialLayoutStrategy : public UBaseLayoutStrategy
 	GENERATED_BODY()
 
 public:
-#pragma region Editable Properties
 	//----------------------------------------------------------------------------------------------
 	// Editable Properties
 	//----------------------------------------------------------------------------------------------
@@ -34,9 +35,7 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategy|Entry", meta=(ClampMin="0"), meta=(ClampMax="10"))
 	int32 NumDeactivatedEntries = 2;
-#pragma endregion Editable Properties
 
-#pragma region Public API
 	//----------------------------------------------------------------------------------------------
 	// BaseLayoutStrategy overrides
 	//----------------------------------------------------------------------------------------------
@@ -172,10 +171,8 @@ public:
 	* Gets The global index representing the tail of the "visible window" (for item num > MaxVisibleEntries).
 	*/
 	int32 GetVisibleEndIndex() const { return VisibleEndIndex; }
-#pragma endregion Public API
 
 protected:
-#pragma region Runtime Properties
 	//----------------------------------------------------------------------------------------------
 	// Runtime Properties
 	//----------------------------------------------------------------------------------------------
@@ -212,5 +209,4 @@ protected:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="StrategyUI|RadialStrategy|Input")
 	float LatestPointerAngle = 0.f;
-#pragma endregion Runtime Properties
 };

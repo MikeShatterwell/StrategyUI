@@ -1,14 +1,15 @@
-﻿#include "Utils/ReflectedObjectsDebugCategory.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "Utils/ReflectedObjectsDebugCategory.h"
 
 #include <Engine/Canvas.h>
-#include <Engine/Font.h>
 
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include <Engine/Engine.h>
-#include <UObject/UnrealType.h>	   // for TFieldIterator, FProperty, etc.
+#include <UObject/UnrealType.h>	
 #include <UObject/Class.h>
-#include <GameplayDebuggerAddonBase.h> // for AddTextLine(), AddShape(), etc.
+#include <GameplayDebuggerAddonBase.h>
 #include <GameplayTagContainer.h>
 #include <Containers/Map.h>
 
@@ -242,12 +243,11 @@ void FReflectedObjectsDebugCategory::ReflectObjectProperties(UObject* Obj)
 				}
 
 				// Get a color for this property type
-				FLinearColor PropColor = GetPropertyColor(Property);
-				const FString ColorMarkup = ToHexMarkup(PropColor);
+				const FString& PropColor = GetPropertyColor(Property);
 
 				CachedLines.Add(
-					 FString::Printf(TEXT("%s   %s = %s"), 
-						 *ColorMarkup, // start color
+					 FString::Printf(TEXT("%s%s = %s"), 
+						 *PropColor, // start color
 						 *DisplayName, 
 						 *ValueStr
 					 )
@@ -333,15 +333,12 @@ void FReflectedObjectsDebugCategory::ReflectTMapProperty(const FMapProperty* Map
 			}
 		}
 
-		FLinearColor KeyColor = GetPropertyColor(KeyProp);
-		FLinearColor ValColor = GetPropertyColor(ValueProp);
-
-		const FString KeyMarkup = ToHexMarkup(KeyColor);
-		const FString ValMarkup = ToHexMarkup(ValColor);
+		const FString& KeyColor = GetPropertyColor(KeyProp);
+		const FString& ValColor = GetPropertyColor(ValueProp);
 
 		CachedLines.Add(FString::Printf(TEXT("      %s[%s] => %s%s"),
-			*KeyMarkup, *KeyStr,
-			*ValMarkup, *ValStr
+			*KeyColor, *KeyStr,
+			*ValColor, *ValStr
 		));
 	}
 }

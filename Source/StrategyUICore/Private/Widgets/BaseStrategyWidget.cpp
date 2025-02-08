@@ -1,10 +1,12 @@
-﻿#include "Widgets/BaseStrategyWidget.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
 
-#include <GameplayDebuggerAddonManager.h>
+#include "Widgets/BaseStrategyWidget.h"
+
 #include <Components/CanvasPanel.h>
 #include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
 #include <Editor/WidgetCompilerLog.h>
+#include <Modules/ModuleManager.h>
 
 #include "Interfaces/IStrategyDataProvider.h"
 #include "Interfaces/IStrategyEntryBase.h"
@@ -16,9 +18,11 @@
 #include "Utils/ReflectedObjectsDebugCategory.h"
 
 #define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
-#define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
+#define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) \
+	IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
 
 #if WITH_EDITOR
+
 void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& CompileLog) const
 {
 	Super::ValidateCompiledDefaults(CompileLog);
@@ -49,10 +53,13 @@ void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& Com
 		}
 	}
 	
-	// Check if MVVM plugin is loaded
+	// Warn if MVVM is loaded but also using DataProvider
 	if (DataProvider && DefaultDataProviderClass && WITH_MVVM)
 	{
-		CompileLog.Warning(FText::FromString(TEXT("You are using the MVVM plugin but have set a DataProvider in BaseStrategyWidget. Consider removing DataProvider and bind SetItems to a view model. Do not use both systems simultaneously.")));
+		CompileLog.Warning(FText::FromString(TEXT(
+			"You are using the MVVM plugin but have set a DataProvider in BaseStrategyWidget. "
+			"Consider removing DataProvider and bind SetItems to a view model. Do not use both simultaneously."
+		)));
 	}
 }
 
@@ -75,88 +82,143 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 		TryCreateDefaultDataProvider();
 		RefreshFromProvider();
 		UpdateWidgets();
-	}
-}
-#endif
-
-void UBaseStrategyWidget::NativeConstruct()
-{
-	Super::NativeConstruct();
-
-	if (LayoutStrategy)
-	{
-		const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
-		
-		IndexToTagStateMap.Reserve(MaxVisibleEntries);
-		IndexToWidgetMap.Reserve(MaxVisibleEntries);
-	}
-
-	TryCreateDefaultDataProvider();
 
 #if WITH_GAMEPLAY_DEBUGGER
-	if (FReflectedObjectsDebugCategory::ActiveInstance.IsValid())
+		UpdateReflectedObjectsDebugCategory();
+#endif
+	}
+}
+
+#endif // WITH_EDITOR
+
+#pragma region UBaseStrategyWidget - API Base
+void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
+{
+	UE_CLOG(
+		!LayoutStrategy,
+		LogStrategyUI,
+		Error,
+		TEXT("%hs called with nullptr layout strategy -- a valid strategy is required."),
+		__FUNCTION__
+	);
+
+	if (LayoutStrategy == NewStrategy)
 	{
-		FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(this);
-		if (LayoutStrategy)
+		// No change
+		return;
+	}
+
+	LayoutStrategy = NewStrategy;
+	if (LayoutStrategy)
+	{
+		LayoutStrategy->InitializeStrategy(this);
+
+		TArray<FText> ErrorText;
+		LayoutStrategy->ValidateStrategy(ErrorText);
+		for (const FText& Text : ErrorText)
 		{
-			FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(LayoutStrategy);
+			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
 		}
 
-		TArray<FString> Filters;
-		Filters.Add(TEXT("StrategyUI|*"));
-		FReflectedObjectsDebugCategory::ActiveInstance->SetCategoryFilters(Filters);
+		UpdateWidgets();
 	}
-#endif
 }
 
 void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	UE_LOG(LogStrategyUI, Verbose, TEXT("%s: Setting %d items"), *GetName(), InItems.Num());
-	if (!ensureAlwaysMsgf(LayoutStrategy, TEXT("No LayoutStrategy assigned!")))
+
+	if (!ensureAlwaysMsgf(
+		LayoutStrategy, 
+		TEXT("No LayoutStrategy assigned to %s!"), *GetName()))
 	{
 		return;
 	}
+
 	SetItems_Internal(InItems);
+}
+
+void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
+{
+	// Unbind from any existing provider
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Unbinding from existing data provider"), __FUNCTION__);
+		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.RemoveDynamic(
+			this,
+			&UBaseStrategyWidget::OnDataProviderUpdated
+		);
+	}
+
+	DataProvider = NewProvider;
+
+	// Initialize the new provider
+	if (DataProvider)
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Initializing new data provider"), __FUNCTION__);
+		IStrategyDataProvider::Execute_InitializeDataProvider(DataProvider);
+	}
+
+	// If valid/ready, bind to it and set items
+	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Binding to new data provider"), __FUNCTION__);
+		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.AddDynamic(
+			this,
+			&UBaseStrategyWidget::OnDataProviderUpdated
+		);
+
+		SetItems(IStrategyDataProvider::Execute_GetDataItems(DataProvider));
+	}
 }
 
 void UBaseStrategyWidget::Reset()
 {
 	UE_LOG(LogStrategyUI, Verbose, TEXT("%s - %hs: Begin widget reset"), *GetName(), __FUNCTION__);
 
-	// Unbind from any existing provider
+	// Unbind from data provider
 	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
-		FOnDataProviderUpdated OnDataProviderUpdated = IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate;
+		FOnDataProviderUpdated OnDataProviderUpdated =
+			IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate;
+
 		if (OnDataProviderUpdated.IsAlreadyBound(this, &UBaseStrategyWidget::OnDataProviderUpdated))
 		{
 			UE_LOG(LogStrategyUI, Verbose, TEXT("%s - %hs: Unbinding from data provider"), *GetName(), __FUNCTION__);
 			OnDataProviderUpdated.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
 		}
+
 		DataProvider = nullptr;
 	}
 
 	SelectedDataIndices.Empty();
 	FocusedGlobalIndex = 0;
-	FocusedDataIndex = INDEX_NONE;
+	FocusedDataIndex   = INDEX_NONE;
 
 	for (auto& Pair : PooledWidgetsMap)
 	{
 		FUserWidgetPool& Pool = Pair.Value;
 		Pool.ResetPool();
 	}
-
 	PooledWidgetsMap.Empty();
-	
+
 	IndexToWidgetMap.Empty();
 	IndexToTagStateMap.Empty();
-	
 	Items.Empty();
 
 	if (CanvasPanel)
 	{
 		CanvasPanel->ClearChildren();
 	}
+
+#if WITH_GAMEPLAY_DEBUGGER
+	if (FReflectedObjectsDebugCategory::ActiveInstance.IsValid())
+	{
+		FReflectedObjectsDebugCategory::ActiveInstance->ClearTargets();
+	}
+#endif
+
 	UE_LOG(LogStrategyUI, Verbose, TEXT("%s - %hs: End widget reset"), *GetName(), __FUNCTION__);
 }
 
@@ -168,9 +230,9 @@ void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 	}
 
 	const FGameplayTag& FocusedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
-	
+
 	//----------------------------------------------------------
-	// 1) Unfocus *all* entries for the old focus data index
+	// Unfocus old index
 	//----------------------------------------------------------
 	const int32 OldDataIndex = FocusedDataIndex;
 	if (OldDataIndex != INDEX_NONE)
@@ -190,7 +252,7 @@ void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 	}
 
 	//----------------------------------------------------------
-	// 2) Update the new focus index & broadcast
+	// Update new focus, broadcast
 	//----------------------------------------------------------
 	FocusedGlobalIndex = InNewGlobalFocusIndex;
 	FocusedDataIndex   = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InNewGlobalFocusIndex);
@@ -205,7 +267,7 @@ void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 	}
 
 	//----------------------------------------------------------
-	// 3) Focus *all* entries for the new focus data index
+	// Focus all entries for the new data index
 	//----------------------------------------------------------
 	const int32 NewDataIndex = FocusedDataIndex;
 	if (NewDataIndex != INDEX_NONE)
@@ -230,43 +292,36 @@ void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, cons
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
 	if (DataIndex == INDEX_NONE)
 	{
-		// Selected a gap between items
-		return;
+		return; // out-of-range (e.g., "gap" index)
 	}
+
 	const bool bAlreadySelected = SelectedDataIndices.Contains(DataIndex);
-	
 	const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
 
+	// Update the interaction tag for all widgets of this data index
 	for (auto& Pair : IndexToWidgetMap)
 	{
 		const int32 MappedGlobalIndex = Pair.Key;
-		const UUserWidget* Widget = Pair.Value.Get();
-		if (!Widget)
-		{
-			continue;
-		}
+		const UUserWidget* Widget     = Pair.Value.Get();
+		if (!Widget) { continue; }
 
 		const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
 		if (MappedDataIndex == DataIndex)
 		{
-			// Apply or remove the “selected” tag
 			UpdateEntryInteractionTagState(MappedGlobalIndex, SelectedState, bShouldBeSelected);
 		}
 	}
-	
+
+	// Add or remove from the selected set
 	if (bShouldBeSelected && !bAlreadySelected)
 	{
 		SelectedDataIndices.Add(DataIndex);
-		UpdateEntryInteractionTagState(InGlobalIndex, SelectedState, /*bEnable=*/ true);
-
-		// Broadcast new data selection
 		UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 		OnItemSelected.Broadcast(DataIndex, Item);
 	}
 	else if (!bShouldBeSelected && bAlreadySelected)
 	{
 		SelectedDataIndices.Remove(DataIndex);
-		UpdateEntryInteractionTagState(InGlobalIndex, SelectedState, /*bEnable=*/ false);
 	}
 }
 
@@ -275,11 +330,32 @@ void UBaseStrategyWidget::ToggleFocusedIndexSelection()
 	const bool bNewSelected = !SelectedDataIndices.Contains(FocusedDataIndex);
 	SetSelectedGlobalIndex(FocusedGlobalIndex, bNewSelected);
 }
+#pragma endregion
+
+#pragma region UUserWidget & UWidget Overrides
+void UBaseStrategyWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	if (LayoutStrategy)
+	{
+		const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
+		IndexToTagStateMap.Reserve(MaxVisibleEntries);
+		IndexToWidgetMap.Reserve(MaxVisibleEntries);
+	}
+
+	TryCreateDefaultDataProvider();
+
+#if WITH_GAMEPLAY_DEBUGGER
+	UpdateReflectedObjectsDebugCategory();
+#endif
+
+	UpdateWidgets();
+}
 
 void UBaseStrategyWidget::NativeDestruct()
 {
 	Reset();
-
 	Super::NativeDestruct();
 }
 
@@ -290,7 +366,7 @@ TSharedRef<SWidget> UBaseStrategyWidget::RebuildWidget()
 		return Super::RebuildWidget();
 	}
 
-	// If there's no root widget or BindWidget, create a new CanvasPanel for it
+	// If there's no RootWidget or BindWidget, create a new CanvasPanel
 	if (!WidgetTree->RootWidget && !CanvasPanel)
 	{
 		CanvasPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
@@ -301,115 +377,77 @@ TSharedRef<SWidget> UBaseStrategyWidget::RebuildWidget()
 	return Super::RebuildWidget();
 }
 
-int32 UBaseStrategyWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
-									   FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+int32 UBaseStrategyWidget::NativePaint(
+	const FPaintArgs& Args,
+	const FGeometry& AllottedGeometry,
+	const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements,
+	int32 LayerId,
+	const FWidgetStyle& InWidgetStyle,
+	bool bParentEnabled
+) const
 {
-	int32 MaxLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+	int32 MaxLayer = Super::NativePaint(
+		Args,
+		AllottedGeometry,
+		MyCullingRect,
+		OutDrawElements,
+		LayerId,
+		InWidgetStyle,
+		bParentEnabled
+	);
+
+	// Optional debug drawing
 	if (bPaintDebugInfo && LayoutStrategy)
 	{
 		const FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
-		LayoutStrategy->DrawDebugVisuals(AllottedGeometry, OutDrawElements, LayerId, Center);
+		LayoutStrategy->DrawDebugVisuals(AllottedGeometry, OutDrawElements, MaxLayer, Center);
 		MaxLayer++;
 	}
+
 	return MaxLayer;
 }
+#pragma endregion
 
-void UBaseStrategyWidget::SetLayoutStrategy(UBaseLayoutStrategy* NewStrategy)
-{
-	UE_CLOG(!LayoutStrategy, LogStrategyUI, Error, TEXT("%hs called with nullptr layout strategy -- this risks an imminent crash! There must always be a valid layout strategy. "), __FUNCTION__);
-
-	if (LayoutStrategy == NewStrategy)
-	{
-		return; // No change
-	}
-
-	LayoutStrategy = NewStrategy;
-	if (LayoutStrategy)
-	{
-		LayoutStrategy->InitializeStrategy(this);
-
-		TArray<FText> ErrorText;
-		LayoutStrategy->ValidateStrategy(ErrorText);
-		for (const FText& Text : ErrorText)
-		{
-			UE_LOG(LogStrategyUI, Error, TEXT("%s"), *Text.ToString());
-		}
-
-		UpdateWidgets();
-	}
-}
-
-void UBaseStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
-{
-	Items = InItems;
-
-	if (GetItemCount() <= 0)
-	{
-		UE_LOG(LogStrategyUI, Log, TEXT("%hs called with no items to display!"), __FUNCTION__);
-		return;
-	}
-
-	UE_LOG(LogStrategyUI, Verbose, TEXT("Initializing strategy %s as Host for %d items"), *GetName(), GetItemCount());
-	GetLayoutStrategyChecked().InitializeStrategy(this);
-	UpdateWidgets();
-}
-
-FUserWidgetPool& UBaseStrategyWidget::GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass)
-{
-	// If no class is given, fallback or throw an error
-	if (!ensureMsgf(WidgetClass, TEXT("%hs called with nullptr WidgetClass!"), __FUNCTION__))
-	{
-		static FUserWidgetPool NullPool;
-		return NullPool;
-	}
-
-	// Check if we have an existing pool for this class
-	if (FUserWidgetPool* ExistingPool = PooledWidgetsMap.Find(WidgetClass))
-	{
-		return *ExistingPool;
-	}
-
-	// Otherwise, create a new one
-	FUserWidgetPool& NewPool = PooledWidgetsMap.Add(WidgetClass, FUserWidgetPool(*this));
-	return NewPool;
-}
-
+#pragma region UBaseStrategyWidget - Entry Widgets Pool & Handling
 UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	// (1) If we already have a widget for this index, return it
+	// (1) If a widget already exists for this index, reuse it
 	if (const TWeakObjectPtr<UUserWidget>* ExistingPtr = IndexToWidgetMap.Find(GlobalIndex))
 	{
 		if (ExistingPtr->IsValid())
 		{
-			UE_LOG(LogStrategyUI, Verbose, TEXT("Reusing widget %s for global index %d"), *ExistingPtr->Get()->GetName(), GlobalIndex);
+			UE_LOG(
+				LogStrategyUI, 
+				Verbose, 
+				TEXT("Reusing widget %s for global index %d"),
+				*ExistingPtr->Get()->GetName(),
+				GlobalIndex
+			);
 			return ExistingPtr->Get();
 		}
-		// else fall through and create a new one
 	}
 
-	// (2) Grab the data item
+	// (2) Determine the data item for this index
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-
-	// A data item is not required for all widgets (nullptr data is valid and can be used for truly "empty" entries)
 	const UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 
-	// (3) Decide which widget class to spawn
+	// (3) Decide which widget class to use (could come from data item, or fallback)
 	TSubclassOf<UUserWidget> DesiredClass = nullptr;
 
 	if (DataItem && DataItem->Implements<UStrategyEntryWidgetProvider>())
 	{
-		// A) Try getting the data item's desired entry widget class if valid
+		// A) Attempt to get direct class
 		DesiredClass = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetClass(DataItem);
 
-		// B) If still none, see if it implements a desired entry widget Tag
+		// B) If still none, attempt to get from a “widget tag”
 		if (!DesiredClass)
 		{
 			const FGameplayTag ItemTag = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetTag(DataItem);
 			if (ItemTag.IsValid() && ItemTag != FGameplayTag::EmptyTag)
 			{
-				// Lookup via project settings
 				if (const TSubclassOf<UUserWidget> FoundClass = UStrategyUIFunctionLibrary::GetWidgetClassForTag(ItemTag))
 				{
 					DesiredClass = *FoundClass;
@@ -418,28 +456,33 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 		}
 	}
 
-	// (C) If the item does not implement the interface or is still null,
-	// fallback to the default
+	// C) If none found, fallback to default
 	if (!DesiredClass)
 	{
-		// Need a new widget from the pool
 		if (!ensure(DefaultEntryWidgetClass))
 		{
-			UE_LOG(LogStrategyUI, Error, TEXT("%hs: No DefaultEntryWidgetClass set! Either implement IStrategyEntryWidgetProvider on your data item (%s at DataIndex %d) or set a default class in the BaseStrategyWidget."), __FUNCTION__, *DataItem->GetName(), DataIndex);
+			UE_LOG(
+				LogStrategyUI,
+				Error,
+				TEXT("%hs: No DefaultEntryWidgetClass set! (DataItem=%s at Index %d)"),
+				__FUNCTION__,
+				DataItem ? *DataItem->GetName() : TEXT("Null"),
+				DataIndex
+			);
 			return nullptr;
 		}
 		DesiredClass = DefaultEntryWidgetClass;
 	}
 
-	// (4) Spawn from pool
+	// (4) Spawn from the pool
 	FUserWidgetPool& EntryWidgetPool = GetOrCreatePoolForClass(DesiredClass);
 	UUserWidget* NewWidget = EntryWidgetPool.GetOrCreateInstance(DesiredClass);
 	check(NewWidget);
 
 	UE_LOG(LogStrategyUI, Verbose, TEXT("Creating new widget %s for global index %d"), *NewWidget->GetName(), GlobalIndex);
 	IndexToWidgetMap.Add(GlobalIndex, NewWidget);
-	
-	// If the index isn’t in IndexStateMap yet, give it an initial state:
+
+	// If no state container yet, initialize it with "Pooled"
 	if (!IndexToTagStateMap.Contains(GlobalIndex))
 	{
 		FGameplayTagContainer InitialStateContainer;
@@ -448,28 +491,43 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 
 		if (NewWidget->Implements<UStrategyEntryBase>())
 		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(NewWidget, FGameplayTagContainer(), InitialStateContainer);
+			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
+				NewWidget, FGameplayTagContainer(), InitialStateContainer
+			);
 		}
 	}
 
+	// If this data index is already in our "selected" set, update the widget
 	if (SelectedDataIndices.Contains(DataIndex))
 	{
 		const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
-		constexpr bool bIsSelected = true;
-		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, bIsSelected);
+		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, /*bEnable=*/ true);
 	}
 
-	// Assign the data to the widget
-	if (Items.IsValidIndex(DataIndex))
+	// Assign data to the widget
+	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>())
 	{
-		const UObject* Item = Items[DataIndex];
-		if (NewWidget->Implements<UStrategyEntryBase>())
-		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Item);
-		}
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Items[DataIndex]);
 	}
 
 	return NewWidget;
+}
+
+FUserWidgetPool& UBaseStrategyWidget::GetOrCreatePoolForClass(const TSubclassOf<UUserWidget>& WidgetClass)
+{
+	if (!ensureMsgf(WidgetClass, TEXT("%hs called with nullptr WidgetClass!"), __FUNCTION__))
+	{
+		static FUserWidgetPool NullPool;
+		return NullPool;
+	}
+
+	if (FUserWidgetPool* ExistingPool = PooledWidgetsMap.Find(WidgetClass))
+	{
+		return *ExistingPool;
+	}
+
+	FUserWidgetPool& NewPool = PooledWidgetsMap.Add(WidgetClass, FUserWidgetPool(*this));
+	return NewPool;
 }
 
 void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
@@ -482,26 +540,30 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 		{
 			if (UUserWidget* Widget = Ptr->Get())
 			{
-				const TSubclassOf<UUserWidget> ActualClass = Widget->GetClass();
+				TSubclassOf<UUserWidget> ActualClass = Widget->GetClass();
 				if (FUserWidgetPool* PoolPtr = PooledWidgetsMap.Find(ActualClass))
 				{
-					// Return to pool
 					PoolPtr->Release(Widget);
 					UE_LOG(LogStrategyUI, Verbose, TEXT("Released widget for global index %d"), GlobalIndex);
 				}
 				else
 				{
-					UE_LOG(LogStrategyUI, Error, TEXT("%hs: No existing pool found for widget class %s!"), __FUNCTION__, *ActualClass->GetName());
+					UE_LOG(
+						LogStrategyUI,
+						Error,
+						TEXT("%hs: No existing pool found for widget class %s!"),
+						__FUNCTION__,
+						*ActualClass->GetName()
+					);
 				}
 
-				// Clear old tags
+				// Transition it back to "Pooled" in IndexToTagStateMap
 				if (IndexToTagStateMap.Contains(GlobalIndex))
 				{
 					FGameplayTagContainer OldState = IndexToTagStateMap[GlobalIndex];
 					FGameplayTagContainer PooledState;
 					PooledState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
 
-					// Tell the entry widget it’s becoming “pooled”
 					if (Widget->Implements<UStrategyEntryBase>())
 					{
 						IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
@@ -512,7 +574,6 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 			}
 		}
 
-		// Remove from the maps as we no longer track this index
 		IndexToWidgetMap.Remove(GlobalIndex);
 		IndexToTagStateMap.Remove(GlobalIndex);
 	}
@@ -524,7 +585,7 @@ void UBaseStrategyWidget::ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndi
 
 	TArray<int32> CurrentIndices;
 	IndexToWidgetMap.GenerateKeyArray(CurrentIndices);
-	for (const int32 OldIndex : CurrentIndices)
+	for (int32 OldIndex : CurrentIndices)
 	{
 		if (!DesiredIndices.Contains(OldIndex))
 		{
@@ -537,29 +598,30 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	UE_LOG(LogStrategyUI, Verbose, TEXT("\nStarting UpdateEntryWidget for index %d,"), InGlobalIndex);
+	UE_LOG(LogStrategyUI, Verbose, TEXT("\nStarting UpdateEntryWidget for index %d"), InGlobalIndex);
 	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
-	
-	if (Widget->Implements<UStrategyEntryBase>())
+	if (Widget && Widget->Implements<UStrategyEntryBase>())
 	{
 		const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(InGlobalIndex);
 		const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
-		
-		// @TODO: Only call this if the item index has changed for this entry
+		// (Optional) re‐assign if needed
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(Widget, Item);
 	}
 }
 
-void UBaseStrategyWidget::NotifyStrategyEntryStateChange(const int32 GlobalIndex, UUserWidget* Widget, const FGameplayTagContainer& OldState, const FGameplayTagContainer& NewState)
+void UBaseStrategyWidget::NotifyStrategyEntryStateChange(
+	int32 GlobalIndex,
+	UUserWidget* Widget,
+	const FGameplayTagContainer& OldState,
+	const FGameplayTagContainer& NewState
+)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	// Check for transitions and update the state if there was a change
 	if (NewState != OldState)
 	{
 		IndexToTagStateMap[GlobalIndex] = NewState;
 
-		// Tell the entry widget it changed states
 		if (Widget->Implements<UStrategyEntryBase>())
 		{
 			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldState, NewState);
@@ -572,17 +634,15 @@ void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 Global
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
-
 	const FGameplayTag DesiredTag = bShouldBeVisible
 		? StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active
 		: StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
-	
+
 	if (const FGameplayTagContainer* ExistingTagsPtr = IndexToTagStateMap.Find(GlobalIndex))
 	{
-		// If we already have the DesiredTag, no need to re‐apply it.
 		if (ExistingTagsPtr->HasTag(DesiredTag))
 		{
-			return;
+			return; // Already in correct state
 		}
 	}
 
@@ -593,25 +653,23 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
-	// Validate that the new tag is a child of "StrategyUI.EntryLifecycle.*"
+	// Validate that NewStateTag is child of EntryLifecycle.*
 	const FGameplayTag& EntryLifecycleParent = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Parent;
 	if (!NewStateTag.MatchesTag(EntryLifecycleParent))
 	{
-		UE_LOG(LogStrategyUI, Warning, TEXT("Invalid EntryState tag: %s"), *NewStateTag.ToString());
+		UE_LOG(LogStrategyUI, Warning, TEXT("Invalid EntryLifecycle tag: %s"), *NewStateTag.ToString());
 		return;
 	}
 
-	// Get the container for this index
 	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
-
 	if (TagContainer.HasTag(NewStateTag))
 	{
-		return; // No actual change needed
+		return; // No change
 	}
-	
+
 	FGameplayTagContainer OldTags = TagContainer;
 
-	// Remove all existing EntryLifecycle tags since they're mutually exclusive
+	// Remove other EntryLifecycle tags
 	TArray<FGameplayTag> TagsToRemove;
 	for (const FGameplayTag& ExistingTag : TagContainer)
 	{
@@ -625,18 +683,15 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 		TagContainer.RemoveTag(TagToRemove);
 	}
 
-	// Add the new status tag
-	if (!TagContainer.HasTag(NewStateTag))
-	{
-		TagContainer.AddTag(NewStateTag);
-	}
+	// Add the new one
+	TagContainer.AddTag(NewStateTag);
 
 	if (TagContainer == OldTags)
 	{
 		return; // No net change
 	}
 
-	// Notify the widget of the change
+	// Notify the widget
 	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
 	{
 		if (Widget->Implements<UStrategyEntryBase>())
@@ -646,12 +701,11 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 	}
 }
 
-void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, const bool bEnable)
+void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex, const FGameplayTag& InteractionTag, bool bEnable)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	const FGameplayTag& EntryInteractionParent = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Parent;
-
 	if (!InteractionTag.MatchesTag(EntryInteractionParent))
 	{
 		UE_LOG(LogStrategyUI, Warning, TEXT("Invalid EntryInteraction tag: %s"), *InteractionTag.ToString());
@@ -670,14 +724,14 @@ void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex
 		TagContainer.RemoveTag(InteractionTag);
 	}
 
-	// Notify the widget
 	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
 	{
 		if (Widget->Implements<UStrategyEntryBase>())
 		{
 			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldTags, TagContainer);
 
-			const FGameplayTag& FocusedTag = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
+			// Optional: call focus/selection change callbacks
+			const FGameplayTag& FocusedTag  = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
 			const FGameplayTag& SelectedTag = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
 
 			if (InteractionTag == FocusedTag)
@@ -691,7 +745,6 @@ void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex
 		}
 	}
 }
-
 
 void UBaseStrategyWidget::UpdateWidgets()
 {
@@ -708,21 +761,20 @@ void UBaseStrategyWidget::UpdateWidgets()
 		return;
 	}
 
-	// Gather all the indices we want to keep.
+	// Gather desired indices from the layout
 	TSet<int32> DesiredIndices = GetLayoutStrategyChecked().ComputeDesiredGlobalIndices();
 
-	// Log the desired indices
 	FString DesiredIndicesStr;
 	for (const int32 Index : DesiredIndices)
 	{
 		DesiredIndicesStr += FString::Printf(TEXT("%d, "), Index);
 	}
-	UE_LOG(LogStrategyUI, Verbose, TEXT("Desired indices: %s"), *DesiredIndicesStr);
+	UE_LOG(LogStrategyUI, Verbose, TEXT("Desired global indices: %s"), *DesiredIndicesStr);
 
-	// 1) Release any old widgets that are no longer needed (scrolled out of view)
+	// 1) Release old widgets not in DesiredIndices
 	ReleaseUndesiredWidgets(DesiredIndices);
-	
-	// 2) Create or update each desired widget
+
+	// 2) Create/update each desired widget
 	for (const int32 GlobalIndex : DesiredIndices)
 	{
 		TryHandlePooledEntryStateTransition(GlobalIndex);
@@ -742,8 +794,6 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 	}
 
 	UUserWidget* Widget = AcquireEntryWidget(GlobalIndex);
-	
-	// Make sure it's actually on the Canvas and prepare to update the slot properties
 	if (Widget->GetParent() != CanvasPanel)
 	{
 		CanvasPanel->AddChildToCanvas(Widget);
@@ -751,64 +801,57 @@ void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
 
 	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot);
 	check(CanvasSlot);
-	
-	const FVector2D& LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
-	
-	// Set common slot properties
-	CanvasSlot->SetAutoSize(true); // entry widgets can be any size
+
+	const FVector2D LocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+
+	CanvasSlot->SetAutoSize(true);
 	CanvasSlot->SetZOrder(0);
 	CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 	CanvasSlot->SetPosition(LocalPos);
 }
+#pragma endregion EntryWidgetsPoolAndHandling
 
-void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
+#pragma region UBaseStrategyWidget - Internal Implementations
+void UBaseStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*>& InItems)
 {
-	// Unbind from any existing provider
-	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
+	Items = InItems;
+	if (GetItemCount() <= 0)
 	{
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Unbinding from existing data provider"), __FUNCTION__);
-		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.RemoveDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
+		UE_LOG(LogStrategyUI, Log, TEXT("%hs called with no items to display!"), __FUNCTION__);
+		return;
 	}
 
-	DataProvider = NewProvider;
+	UE_LOG(
+		LogStrategyUI,
+		Verbose,
+		TEXT("Initializing strategy %s as host for %d items"),
+		*GetName(),
+		GetItemCount()
+	);
 
-	if (DataProvider)
-	{
-		// Initialize the new provider if we have one
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Initializing new data provider"), __FUNCTION__);
-		IStrategyDataProvider::Execute_InitializeDataProvider(DataProvider);
-	}
-
-	// Listen for updates from the new provider if it initializes correctly
-	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
-	{
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Binding to new data provider"), __FUNCTION__);
-		IStrategyDataProvider::Execute_GetOnDataProviderUpdated(DataProvider)->OnDataProviderUpdatedDelegate.AddDynamic(this, &UBaseStrategyWidget::OnDataProviderUpdated);
-
-		SetItems(IStrategyDataProvider::Execute_GetDataItems(DataProvider));
-	}
+	GetLayoutStrategyChecked().InitializeStrategy(this);
+	UpdateWidgets();
 }
+#pragma endregion
 
+#pragma region UBaseStrategyWidget - Data Provider
 void UBaseStrategyWidget::OnDataProviderUpdated()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Data provider updated"), __FUNCTION__);
 
-	// Called when the provider signals data changed
 	RefreshFromProvider();
 }
 
 void UBaseStrategyWidget::RefreshFromProvider()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-	
+
 	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
-		// Grab array of items from the provider
-		const TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
+		TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
 		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Received %d items from provider"), __FUNCTION__, ProvidedItems.Num());
-	
-		// Feed them into the existing system
+
 		SetItems(ProvidedItems);
 	}
 	else
@@ -826,6 +869,40 @@ void UBaseStrategyWidget::TryCreateDefaultDataProvider()
 	}
 	else
 	{
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: No DefaultDataProviderClass set or DataProvider already exists"), __FUNCTION__);
+		UE_LOG(
+			LogStrategyUI,
+			Verbose,
+			TEXT("%hs: No DefaultDataProviderClass set or DataProvider already exists"),
+			__FUNCTION__
+		);
 	}
 }
+#pragma endregion
+
+#pragma region UBaseStrategyWidget - Debug
+#if WITH_GAMEPLAY_DEBUGGER
+
+void UBaseStrategyWidget::UpdateReflectedObjectsDebugCategory()
+{
+	if (FReflectedObjectsDebugCategory::ActiveInstance.IsValid())
+	{
+		FReflectedObjectsDebugCategory::ActiveInstance->ClearTargets();
+		FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(this);
+
+		if (LayoutStrategy)
+		{
+			FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(LayoutStrategy);
+		}
+		if (DataProvider)
+		{
+			FReflectedObjectsDebugCategory::ActiveInstance->AddTargetObject(DataProvider);
+		}
+
+		TArray<FString> Filters;
+		Filters.Add(TEXT("StrategyUI|*"));
+		FReflectedObjectsDebugCategory::ActiveInstance->SetCategoryFilters(Filters);
+	}
+}
+
+#endif // WITH_GAMEPLAY_DEBUGGER
+#pragma endregion

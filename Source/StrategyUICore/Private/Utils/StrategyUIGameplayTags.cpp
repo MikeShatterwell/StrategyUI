@@ -1,4 +1,6 @@
-﻿#include "Utils/StrategyUIGameplayTags.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "Utils/StrategyUIGameplayTags.h"
 
 namespace StrategyUIGameplayTags
 {

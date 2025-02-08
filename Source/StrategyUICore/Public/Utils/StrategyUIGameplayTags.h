@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#pragma once
 
 #include <NativeGameplayTags.h>
 

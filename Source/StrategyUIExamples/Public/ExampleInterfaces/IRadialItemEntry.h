@@ -1,3 +1,5 @@
+// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
 #pragma once
 
 #include <UObject/Interface.h>
@@ -44,14 +46,11 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float DistanceFactor = 0.f;
 
-	// Whether this wedge is focused/hovered
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	bool bIsFocused = false;
-
 	FString ToString() const
 	{
-		return FString::Printf(TEXT("UVCenterX: %.2f, UVCenterY: %.2f, WedgeWidth: %.2f, AngleOffset: %.2f, SpiralMinRadius: %.2f, SpiralMaxRadius: %.2f, DistanceFactor: %.2f, bIsFocused: %s"),
-			UVCenterX, UVCenterY, WedgeWidth, AngleOffset, SpiralMinRadius, SpiralMaxRadius, DistanceFactor, bIsFocused ? TEXT("true") : TEXT("false"));
+		return FString::Printf(
+			TEXT("UVCenterX: %.2f, UVCenterY: %.2f, WedgeWidth: %.2f, AngleOffset: %.2f, SpiralMinRadius: %.2f, SpiralMaxRadius: %.2f, DistanceFactor: %.2f"),
+			UVCenterX, UVCenterY, WedgeWidth, AngleOffset, SpiralMinRadius, SpiralMaxRadius, DistanceFactor);
 	}
 };
 

@@ -6,10 +6,12 @@ Examples of such widgets include:
 - Radial menus
 - Infinitely scrolling spiral item lists
 
-[TODO:]
+Things that should be possible with StrategyUI
 - Floating world space UI elements (e.g, objective markers, compass points, interaction indicators, etc.)
 - Interactive maps with zoom and pan functionality 
 - Minimap displays
+- Tooltips and context menus 
+  - Bonus points for timed sticky tooltips that will freeze and allow interaction on the new tooltip
 
 
 ## License
@@ -42,11 +44,9 @@ Do what you want with it 😄
 
 ## Overview
 
-StrategyUI is intended to leverage the **Strategy design pattern** to separate the “what” from the “how” in UI layout:
-- **What:** The widget container holds data items and takes care of child entry widgets.
-- **How:** Layout strategies compute positions, sizes, visibility based on a chosen algorithm.
+StrategyUI is intended to separate data & widget management from the layout algorithms in UI layout.
  
-Essentially, the strategy maps an item index to layout data relevant for its bound entry widget.
+The strategy maps an item index to layout data relevant for its bound entry widget.
 This separation allows you to easily swap out or extend layout algorithms without altering the core widget logic.
 
 ---

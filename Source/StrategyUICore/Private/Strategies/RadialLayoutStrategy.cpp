@@ -1,4 +1,6 @@
-﻿#include "Strategies/RadialLayoutStrategy.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "Strategies/RadialLayoutStrategy.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RadialLayoutStrategy)
 
@@ -137,7 +139,7 @@ void URadialLayoutStrategy::DrawDebugVisuals(const FGeometry& AllottedGeometry, 
 
 
 //----------------------------------------------------------------------------------------------
-// Radial Layout Strategy - virtual base functions
+// RadialLayoutStrategy - virtual base functions
 //----------------------------------------------------------------------------------------------
 int32 URadialLayoutStrategy::UpdateGapSegments(const int32 TotalItems)
 {

@@ -1,4 +1,6 @@
-﻿#include "StrategyUIExamples.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "StrategyUIExamples.h"
 
 #define LOCTEXT_NAMESPACE "FStrategyUIExamplesModule"
 

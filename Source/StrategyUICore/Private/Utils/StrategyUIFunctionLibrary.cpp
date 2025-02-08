@@ -1,4 +1,6 @@
-﻿#include "Utils/StrategyUIFunctionLibrary.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "Utils/StrategyUIFunctionLibrary.h"
 
 #include <Blueprint/UserWidget.h>
 #include <Engine/Engine.h>

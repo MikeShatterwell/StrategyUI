@@ -1,4 +1,6 @@
-﻿#include "ExampleStrategies/WheelLayoutStrategy.h"
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#include "ExampleStrategies/WheelLayoutStrategy.h"
 
 #include <Utils/LogStrategyUI.h>
 

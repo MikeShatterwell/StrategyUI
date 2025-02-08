@@ -4,7 +4,7 @@
 	"VersionName": "1.0",
 	"FriendlyName": "StrategyUI",
 	"Description": "A UI framework that allows generic strategy objects to handle complex layouts",
-	"Category": "Other",
+	"Category": "UI",
 	"CreatedBy": "Mike Desrosiers",
 	"CreatedByURL": "",
 	"DocsURL": "",

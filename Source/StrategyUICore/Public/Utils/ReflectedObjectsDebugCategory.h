@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
+
+#pragma once
 
 #include <CoreMinimal.h>
 
@@ -33,27 +35,18 @@ public:
 	void ClearTargets();
 	
 	// Simple color helper
-	static FLinearColor GetPropertyColor(const FProperty* Prop)
+	static FString GetPropertyColor(const FProperty* Prop)
 	{
-		if (Prop->IsA<FFloatProperty>()) return FLinearColor(0.f, 1.f, 0.f, 1.f);   // green
+		if (Prop->IsA<FFloatProperty>()) return TEXT("{green}");
 		if (Prop->IsA<FIntProperty>() ||
 			Prop->IsA<FInt64Property>() ||
-			Prop->IsA<FInt16Property>()) return FLinearColor(0.4f, 0.5f, 1.f, 1.f); // blue
-		if (Prop->IsA<FBoolProperty>())  return FLinearColor(1.f, 0.2f, 0.2f, 1.f); // red
+			Prop->IsA<FInt16Property>()) return TEXT("{cyan}");
+		if (Prop->IsA<FBoolProperty>())  return TEXT("{red}");
 		if (Prop->IsA<FStrProperty>() ||
-			Prop->IsA<FNameProperty>())  return FLinearColor(1.f, 0.7f, 1.f, 1.f);  // rose
-		return FLinearColor(0.8f, 0.8f, 0.8f, 1.f); // fallback (light gray)
-	};
-
-	static FString ToHexMarkup(const FLinearColor& InColor)
-	{
-		// Convert [0..1] floats to [0..255] and clamp
-		const int32 R = FMath::Clamp(FMath::RoundToInt(InColor.R * 255.f), 0, 255);
-		const int32 G = FMath::Clamp(FMath::RoundToInt(InColor.G * 255.f), 0, 255);
-		const int32 B = FMath::Clamp(FMath::RoundToInt(InColor.B * 255.f), 0, 255);
-
-		// Format like "{#RRGGBB}"
-		return FString::Printf(TEXT("{#%02X%02X%02X}"), R, G, B);
+			Prop->IsA<FNameProperty>())  return TEXT("{magenta}");
+		if (Prop->IsA<FTextProperty>())  return TEXT("{orange}");
+		if (Prop->IsA<FObjectProperty>()) return TEXT("{yellow}");
+		return TEXT("{gray}");
 	};
 
 	/**

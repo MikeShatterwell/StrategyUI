@@ -1,4 +1,4 @@
-﻿// DebugItemsDataProvider.cpp
+﻿// Copyright Mike Desrosiers 2025, All Rights Reserved.
 
 #include "Providers/DebugItemsDataProvider.h"
 
