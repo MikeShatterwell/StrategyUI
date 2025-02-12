@@ -78,6 +78,7 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 		}
 
 		Reset();
+		SynchronizeProperties();
 		TryCreateDefaultDataProvider();
 		RefreshFromProvider();
 		UpdateWidgets();
@@ -509,7 +510,7 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	{
 		// Only do this once for this particular UUserWidget
 		SlotData.CachedSlateWidget = NewWidget->TakeWidget();
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Cached Slate widget %s for UWidget %s"), __FUNCTION__, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(SlotData.CachedSlateWidget), *NewWidget->GetName());
+		UE_LOG(LogStrategyUI, VeryVerbose, TEXT("%hs: Cached Slate widget %s for UWidget %s"), __FUNCTION__, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(SlotData.CachedSlateWidget), *NewWidget->GetName());
 	}
 
 	if (NewWidget->Implements<UStrategyEntryBase>())
@@ -528,7 +529,7 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 
 	// Assign data to the widget
 	const bool bHasDataChanged = SlotData.LastAssignedItem != DataItem;
-	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>())// && bHasDataChanged)
+	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>() && bHasDataChanged)
 	{
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Items[DataIndex]);
 		SlotData.LastAssignedItem = DataItem;
@@ -766,7 +767,7 @@ void UBaseStrategyWidget::UpdateWidgets()
 
 	if (GetItemCount() == 0)
 	{
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs called with no items to display!"), __FUNCTION__);
+		UE_LOG(LogStrategyUI, Warning, TEXT("%hs called with no items to display!"), __FUNCTION__);
 		return;
 	}
 
@@ -864,7 +865,7 @@ void UBaseStrategyWidget::RebuildSlateForIndices(const TSet<int32>& InIndices, c
 		// Update the slot data with the computed position and depth.
 		UE_LOG(
 			LogStrategyUI,
-			Verbose,
+			VeryVerbose,
 			TEXT("%hs: Updating slot data for global index %d at position %s"),
 			__FUNCTION__,
 			GlobalIndex,
@@ -889,7 +890,7 @@ void UBaseStrategyWidget::RebuildSlateForIndices(const TSet<int32>& InIndices, c
 			MinimalData.Widget = UnderlyingSlateWidget.ToSharedRef();
 			UE_LOG(
 				LogStrategyUI,
-				Verbose,
+				VeryVerbose,
 				TEXT("%hs: Adding minimal data for global index %d at position %s"),
 				__FUNCTION__,
 				GlobalIndex,
@@ -917,7 +918,7 @@ void UBaseStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*
 	UE_LOG(
 		LogStrategyUI,
 		Verbose,
-		TEXT("%hs: Initializing strategy %s as host for %d items"),
+		TEXT("%hs: Initializing %s as strategy host for %d items"),
 		__FUNCTION__,
 		*GetName(),
 		GetItemCount()
@@ -943,7 +944,7 @@ void UBaseStrategyWidget::RefreshFromProvider()
 
 	if (IS_DATA_PROVIDER_READY_AND_VALID(DataProvider))
 	{
-		TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
+		const TArray<UObject*> ProvidedItems = IStrategyDataProvider::Execute_GetDataItems(DataProvider);
 		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Received %d items from provider"), __FUNCTION__, ProvidedItems.Num());
 
 		SetItems(ProvidedItems);

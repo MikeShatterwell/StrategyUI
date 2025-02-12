@@ -3,6 +3,7 @@
 #include <CoreMinimal.h>
 #include <Widgets/SPanel.h>
 #include <Layout/Children.h>
+#include <Slate/SRetainerWidget.h>
 #include <UObject/GCObject.h>
 
 #include "Utils/StrategyUIFunctionLibrary.h"
@@ -33,7 +34,6 @@ struct FStrategyCanvasSlotData_Minimal
  */
 class SStrategyCanvasPanel
 	: public SPanel
-	, public FGCObject
 {
 public:
 	SLATE_BEGIN_ARGS(SStrategyCanvasPanel) {}
@@ -52,7 +52,7 @@ public:
 	 */
 	void UpdateChildrenData(const TMap<int32, FStrategyCanvasSlotData_Minimal>& InSlotData);
 
-	void SetDebugPaint(bool bEnable) { bDebugPaint = bEnable; }
+	void SetDebugPaint(const bool bEnable) { bDebugPaint = bEnable; }
 
 	// SPanel overrides
 	virtual void OnArrangeChildren(const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren) const override;
@@ -68,10 +68,6 @@ public:
 		int32 LayerId,
 		const FWidgetStyle& InWidgetStyle,
 		bool bParentEnabled) const override;
-
-	// FGCObject interface
-	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	virtual FString GetReferencerName() const override { return TEXT("SStrategyCanvasPanel"); }
 
 private:
 	/**

@@ -31,8 +31,6 @@ void SStrategyCanvasPanel::UpdateChildrenData(const TMap<int32, FStrategyCanvasS
 		if (!InSlotData.Contains(Pair.Key))
 		{
 			SlotsToRemove.Add(Pair.Value);
-			UE_LOG(LogStrategyUI, Verbose, TEXT("Marking slot %d (GlobalIndex %d) for removal"), 
-				Pair.Value, Pair.Key);
 		}
 		else
 		{
@@ -85,7 +83,7 @@ void SStrategyCanvasPanel::UpdateChildrenData(const TMap<int32, FStrategyCanvasS
 				Slot.Depth = NewData.Depth;
 				Slot.Widget = NewData.Widget;
 				
-				UE_LOG(LogStrategyUI, Verbose, TEXT("Updated existing slot %d for global index %d"), 
+				UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Updated existing slot %d for global index %d"), 
 					*ExistingSlotIndex, GlobalIndex);
 			}
 		}
@@ -97,9 +95,10 @@ void SStrategyCanvasPanel::UpdateChildrenData(const TMap<int32, FStrategyCanvasS
 			Slot.Position = NewData.Position;
 			Slot.Depth = NewData.Depth;
 			Slot.Widget = NewData.Widget;
+			Slot[NewData.Widget.ToSharedRef()];
 			
 			GlobalIndexToSlot.Add(GlobalIndex, NewIndex);
-			UE_LOG(LogStrategyUI, Verbose, TEXT("Added new slot %d for global index %d"), 
+			UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Added new slot %d for global index %d"), 
 				NewIndex, GlobalIndex);
 		}
 	}
@@ -132,7 +131,7 @@ void SStrategyCanvasPanel::OnArrangeChildren(const FGeometry& AllottedGeometry, 
 		}
 	}
 
-	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Sorting %d slots by depth"), __FUNCTION__, Sorted.Num());
+	UE_LOG(LogStrategyUI, VeryVerbose, TEXT("%hs: Sorting %d slots by depth"), __FUNCTION__, Sorted.Num());
 	Sorted.Sort([](const FSortSlot& A, const FSortSlot& B)
 	{
 		return A.Depth < B.Depth;
@@ -167,6 +166,7 @@ void SStrategyCanvasPanel::OnArrangeChildren(const FGeometry& AllottedGeometry, 
 			)
 		);
 
+		// Don't re-arrange this widget
 		ArrangedWidgets.Add(ChildWidget);
 	}
 }
@@ -227,10 +227,4 @@ int32 SStrategyCanvasPanel::OnPaint(
 	}
 
 	return MaxLayerId;
-}
-
-void SStrategyCanvasPanel::AddReferencedObjects(FReferenceCollector& Collector)
-{
-	// Since this panel holds only Slate widget references (not UObjects) in its minimal data,
-	// nothing needs to be added here.
 }

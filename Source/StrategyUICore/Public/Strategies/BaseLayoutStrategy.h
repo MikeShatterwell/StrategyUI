@@ -7,7 +7,7 @@
 #include "Interfaces/ILayoutStrategyHost.h"
 #include "BaseLayoutStrategy.generated.h"
 
-#define MAX_ENTRY_COUNT 512
+#define MAX_ENTRY_COUNT 256
 
 class UWidget;
 
@@ -42,8 +42,9 @@ public:
 	 * Maximum number of visible entries at once.
 	 * If Items.Num() exceeds this value, we only display a subset "visible window" that is determined by ComputeDesiredIndices.
 	 * 
-	 * This value is clamped to MAX_ENTRY_COUNT (default 64) to prevent performance issues with an extreme number of widgets.
-	 * If you find yourself needing anywhere near this many entry widgets, reconsider your design.
+	 * This value is clamped to MAX_ENTRY_COUNT (default 256) to prevent performance issues with an extreme number of widgets.
+	 *
+	 * The StrategyUI plugin efficiently handles a large number of entries. However, the more widgets you have active at once, the bigger the performance hit.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
 	int32 MaxVisibleEntries = 8;
