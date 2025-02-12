@@ -15,6 +15,91 @@ class UUserWidget;
 class IStrategyDataProvider;
 class SStrategyCanvasPanel;
 
+USTRUCT()
+struct FStrategyEntrySlotData
+{
+
+	GENERATED_BODY()
+	
+public:
+	virtual ~FStrategyEntrySlotData() = default;
+	FStrategyEntrySlotData() = default;
+	
+	virtual FStrategyEntrySlotData& operator=(const FStrategyEntrySlotData& Other)
+	{
+		Widget = Other.Widget;
+		TagState = Other.TagState;
+		Position = Other.Position;
+		Depth = Other.Depth;
+		LastAssignedItem = Other.LastAssignedItem;
+		return *this;
+	}
+	
+	// The pooled or acquired widget for this global index
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	TWeakObjectPtr<UUserWidget> Widget = nullptr;
+	TSharedPtr<SWidget> CachedSlateWidget = nullptr;
+
+	// The current tag state (lifecycle, interaction, etc.)
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	FGameplayTagContainer TagState;
+
+	// The latest position computed by the layout strategy's GetItemPosition()
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	FVector2D Position = FVector2D::ZeroVector;
+
+	// A "depth" or Z-order used to sort
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	float Depth = 0.f;
+
+	// The last assigned data item, for detecting changes
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	TWeakObjectPtr<UObject> LastAssignedItem = nullptr;
+
+	virtual FString ToString() const
+	{
+		return FString::Printf(TEXT("\n\t\tWidget: %s, \n\t\tTagState: %s, \n\t\tPosition: %s, \n\t\tDepth: %f, \n\t\tLastItem: %s"),
+			Widget.IsValid() ? *Widget->GetName() : TEXT("None"),
+			*TagState.ToString(),
+			*Position.ToString(),
+			Depth,
+			LastAssignedItem.IsValid() ? *LastAssignedItem->GetName() : TEXT("None"));
+	}
+
+	virtual void Reset()
+	{
+		Widget.Reset();
+		CachedSlateWidget.Reset();
+		TagState.Reset();
+		Position = FVector2D::ZeroVector;
+		Depth = 0.f;
+		LastAssignedItem.Reset();
+	}
+
+	virtual bool operator==(const FStrategyEntrySlotData& Other) const
+	{
+		return Widget == Other.Widget
+			&& TagState == Other.TagState
+			&& Position == Other.Position
+			&& FMath::IsNearlyEqual(Depth, Other.Depth)
+			&& LastAssignedItem == Other.LastAssignedItem;
+	}
+
+	virtual bool IsValid() const
+	{
+		return Widget.IsValid() && TagState.IsValid() && CachedSlateWidget.IsValid();
+	}
+};
+
+template<>
+struct TBaseStructure<FStrategyEntrySlotData>
+{
+	static const UScriptStruct* Get()
+	{
+		return FStrategyEntrySlotData::StaticStruct();
+	}
+};
+
 /**
  * Delegate broadcast when an item gains focus.o
  * Provides the index and the data item object implementing UStrategyInteractiveEntry.
@@ -136,6 +221,7 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
+	virtual void SynchronizeProperties() override;
 	virtual int32 NativePaint(
 		const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
@@ -210,9 +296,19 @@ protected:
 	virtual void UpdateWidgets();
 
 	/**
-	 * Positions the widget on the CanvasPanel based on LayoutStrategy logic.
+	 * Checks if the new desired indices are identical to what was used last update.
 	 */
-	virtual void PositionWidget(int32 GlobalIndex);
+	bool HasNewDesiredIndices(const TSet<int32>& NewIndices) const;
+
+	/**
+	 * A single function to build the arrays for our Slate panel
+	 * and optionally re-acquire/update widgets for each global index.
+	 *
+	 * @param InIndices           The set of global indices we’re displaying.
+	 * @param bForceUpdateWidget  If true, call UpdateEntryWidget(...) (releasing/re-acquiring if needed).
+	 *                            If false, only do minimal position/visibility updates.
+	 */
+	void RebuildSlateForIndices(const TSet<int32>& InIndices, bool bForceUpdateWidget);
 #pragma endregion
 
 #pragma region UBaseStrategyWidget Functions - Internal Implementations
@@ -251,17 +347,18 @@ protected:
 	//----------------------------------------------------------------------------------------------
 	// UBaseStrategyWidget Properties - Entry Widgets & State
 	//----------------------------------------------------------------------------------------------
-	/** Maps a "global item index" to the widget that is currently displaying that item (if visible). */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
-	TMap<int32, TWeakObjectPtr<UUserWidget>> IndexToWidgetMap;
+	TMap<int32, FStrategyEntrySlotData> GlobalIndexToSlotData;
 
-	/** Tracks state (active, pooled, etc.) for each global item index. */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
-	TMap<int32, FGameplayTagContainer> IndexToTagStateMap;
+	TMap<TSubclassOf<UUserWidget>, FUserWidgetPool> WidgetPools;
 
-	/** We store item positions in a single TMap, then pass them to the SStrategyCanvasPanel in one call. This replaces the "CanvasPanelSlot" usage. */
+	/** 
+	 * Store the last set of indices for quick comparison 
+	 * so we skip re-release/re-acquire if they haven’t changed.
+	 */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="StrategyUI|BaseStrategyWidget")
-	TMap<int32, FVector2D> IndexToPositionMap;
+	TSet<int32> LastDesiredIndices;
 #pragma endregion
 
 #pragma region UBaseStrategyWidget Properties - Focus & Selection
@@ -308,6 +405,9 @@ protected:
 	/** If true, draw the strategy's debug shapes. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
 	bool bPaintDebugInfo = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
+	bool bPaintEntryWidgetBorders = false;
 
 #if WITH_GAMEPLAY_DEBUGGER
 	virtual void UpdateReflectedObjectsDebugCategory();

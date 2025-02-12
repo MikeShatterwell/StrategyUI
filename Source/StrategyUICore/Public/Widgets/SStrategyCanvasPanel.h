@@ -1,44 +1,37 @@
 ﻿#pragma once
 
-#include "CoreMinimal.h"
-#include "Widgets/SPanel.h"
-#include "Blueprint/UserWidgetPool.h"
-#include "Layout/Children.h"
-#include "UObject/GCObject.h"
+#include <CoreMinimal.h>
+#include <Widgets/SPanel.h>
+#include <Layout/Children.h>
+#include <UObject/GCObject.h>
 
-class UUserWidget;
+#include "Utils/StrategyUIFunctionLibrary.h"
 
 /**
- * A slot describing how each marker or item is displayed.
+ * Minimal layout data for a single entry. This structure contains only what SStrategyCanvasPanel needs:
+ * a screen position, a depth value for z‐ordering, and the underlying Slate widget to arrange.
  */
-class FMarkerSlotData : public TSlotBase<FMarkerSlotData>
+struct FStrategyCanvasSlotData_Minimal
 {
-public:
-	FMarkerSlotData()
-		: TSlotBase<FMarkerSlotData>()
-		, ScreenPosition(FVector2D::ZeroVector)
-		, bIsVisible(false)
-		, Depth(0.f)
-	{}
-
-	/** The pooled UUserWidget for this item. */
-	TWeakObjectPtr<UUserWidget> PooledWidget;
-
-	/** Final 2D position on screen (or local). */
-	FVector2D ScreenPosition;
-
-	/** Whether this slot is visible and should be arranged. */
-	bool bIsVisible;
-
-	/** Depth or Z-order for sorting. */
-	float Depth;
+	/** Screen–space position (usually computed from the layout strategy) */
+	FVector2D Position = FVector2D::ZeroVector;
+	/** A depth (or Z–order) value to sort the children */
+	float Depth = 0.f;
+	/** The underlying Slate widget for this entry.*/
+	TSharedPtr<SWidget> Widget;
+	
+	FString ToString() const
+	{
+		return FString::Printf(TEXT("Position: %s, Depth: %f, Widget: %s"),
+			*Position.ToString(), Depth, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(Widget));
+	}
 };
 
 /**
- * A custom Slate panel to display multiple classes of user widgets,
- * each class having its own FUserWidgetPool. Replaces UCanvasPanel usage.
+ * SStrategyCanvasPanel is a pure Slate container that arranges children at explicit positions with a given depth.
+ * It is designed to be as lean as possible. All UUserWidget (or other UObject/Unreal) logic should be handled in the implementing UWidget.
  */
-class STRATEGYUI_API SStrategyCanvasPanel 
+class SStrategyCanvasPanel
 	: public SPanel
 	, public FGCObject
 {
@@ -49,43 +42,24 @@ public:
 	SStrategyCanvasPanel();
 	virtual ~SStrategyCanvasPanel() override;
 
+	/** Constructs this panel. No direct children are set up initially. */
 	void Construct(const FArguments& InArgs);
 
-	//-------------------------------------------------------------
-	// Public API for the Strategy Widget
-	//-------------------------------------------------------------
-
 	/**
-	 * Initialize the panel's pools by setting a world (and optionally a PlayerController).
-	 * This is typically called in your widget’s RebuildWidget().
+	 * Update the children data with minimal layout data.
+	 * The parameter InSlotData maps a global index (as defined by UBaseStrategyWidget)
+	 * to a minimal data struct containing only the position, depth, and Slate widget to show.
 	 */
-	void InitializePools(UWorld* InWorld, APlayerController* InPC = nullptr);
+	void UpdateChildrenData(const TMap<int32, FStrategyCanvasSlotData_Minimal>& InSlotData);
 
-	/**
-	 * Acquire (or reuse) a UUserWidget from the pool for a given item index & widget class.
-	 * If the pool for WidgetClass doesn't exist yet, we create it on demand.
-	 */
-	UUserWidget* AcquireEntryWidget(const TSubclassOf<UUserWidget>& WidgetClass, int32 GlobalIndex);
+	void SetDebugPaint(bool bEnable) { bDebugPaint = bEnable; }
 
-	/**
-	 * Release the UUserWidget for a given item index, returning it to the appropriate pool.
-	 */
-	void ReleaseEntryWidget(int32 GlobalIndex);
-
-	/**
-	 * Called each frame/refresh to update the 2D positions, visibility, and optional depth for each item.
-	 */
-	void UpdateChildrenData(
-		const TArray<int32>& GlobalIndices,
-		const TMap<int32, FVector2D>& IndexToPosition,
-		const TMap<int32, bool>& IndexToVisibility,
-		const TMap<int32, float>& IndexToDepth
-	);
-
-	//-------------------------------------------------------------
-	// SPanel / SWidget interface
-	//-------------------------------------------------------------
+	// SPanel overrides
 	virtual void OnArrangeChildren(const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren) const override;
+	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override;
+	virtual FChildren* GetChildren() override;
+
+	// SWidget override for painting
 	virtual int32 OnPaint(
 		const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
@@ -93,37 +67,41 @@ public:
 		FSlateWindowElementList& OutDrawElements,
 		int32 LayerId,
 		const FWidgetStyle& InWidgetStyle,
-		bool bParentEnabled
-	) const override;
+		bool bParentEnabled) const override;
 
-	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override { return FVector2D::ZeroVector; }
-	virtual FChildren* GetChildren() override { return &CombinedChildren; }
-
-	//-------------------------------------------------------------
 	// FGCObject interface
-	//-------------------------------------------------------------
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 	virtual FString GetReferencerName() const override { return TEXT("SStrategyCanvasPanel"); }
 
-protected:
-	/** Our TPanelChildren containing slot data for each item index. */
-	TPanelChildren<FMarkerSlotData> MarkerSlots;
+private:
+	/**
+	 * Internal slot type that holds the minimal data for one child.
+	 * This slot is a lightweight container that derives from TSlotBase.
+	 */
+	struct FStrategyCanvasChildSlot_Internal : public TSlotBase<FStrategyCanvasChildSlot_Internal>
+	{
+		FVector2D Position = FVector2D::ZeroVector;
+		float Depth = 0.f;
+		TWeakPtr<SWidget> Widget;
 
-	/** If we had sub-widgets like arrow icons, we could unify them in CombinedChildren. */
+		FString ToString() const
+		{
+			return FString::Printf(TEXT("Position: %s, Depth: %f, Widget: %s"),
+				*Position.ToString(), Depth, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(Widget));
+		}
+	};
+
+	/** The array of children slots */
+	TPanelChildren<FStrategyCanvasChildSlot_Internal> Children;
+
+	/** A helper that combines all children */
 	FCombinedChildren CombinedChildren;
 
-	/** Maps GlobalIndex → SlotIndex so we know which slot belongs to a given item. */
+	/**
+	 * Mapping from the “global index” (provided by the host widget) to an index in our Children array.
+	 * This lets us update or remove individual children efficiently.
+	 */
 	TMap<int32, int32> GlobalIndexToSlot;
 
-	/**
-	 * A map of widget class -> FUserWidgetPool, allowing multiple classes in one panel:
-	 *  - "ObjectiveMarkerWidget"
-	 *  - "PlayerIndicatorWidget"
-	 *  - etc.
-	 */
-	TMap<TSubclassOf<UUserWidget>, FUserWidgetPool> PoolsByClass;
-
-	// We store references to the world and PC for initialization if we create new pools.
-	TWeakObjectPtr<UWorld> CachedWorld;
-	TWeakObjectPtr<APlayerController> CachedPC;
+	bool bDebugPaint = false;
 };

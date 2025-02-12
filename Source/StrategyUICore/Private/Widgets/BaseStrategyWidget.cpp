@@ -2,8 +2,6 @@
 
 #include "Widgets/BaseStrategyWidget.h"
 
-#include <Components/CanvasPanel.h>
-#include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
 #include <Editor/WidgetCompilerLog.h>
 #include <Modules/ModuleManager.h>
@@ -196,9 +194,14 @@ void UBaseStrategyWidget::Reset()
 	SelectedDataIndices.Empty();
 	FocusedGlobalIndex = 0;
 	FocusedDataIndex   = INDEX_NONE;
-	IndexToWidgetMap.Empty();
-	IndexToTagStateMap.Empty();
-	IndexToPositionMap.Empty();
+	
+	GlobalIndexToSlotData.Empty();
+
+	for (TTuple<TSubclassOf<UUserWidget>, FUserWidgetPool>& Pool : WidgetPools)
+	{
+		Pool.Value.ResetPool();
+	}
+	
 	Items.Empty();
 
 
@@ -227,10 +230,10 @@ void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 	const int32 OldDataIndex = FocusedDataIndex;
 	if (OldDataIndex != INDEX_NONE)
 	{
-		for (auto& Pair : IndexToWidgetMap)
+		for (TTuple<int32, FStrategyEntrySlotData>& SlotData : GlobalIndexToSlotData)
 		{
-			const int32 MappedGlobalIndex = Pair.Key;
-			UUserWidget* Widget = Pair.Value.Get();
+			const int32 MappedGlobalIndex = SlotData.Key;
+			const UUserWidget* Widget = SlotData.Value.Widget.Get();
 			if (!Widget) { continue; }
 
 			const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
@@ -262,10 +265,10 @@ void UBaseStrategyWidget::UpdateFocusedIndex(const int32 InNewGlobalFocusIndex)
 	const int32 NewDataIndex = FocusedDataIndex;
 	if (NewDataIndex != INDEX_NONE)
 	{
-		for (auto& Pair : IndexToWidgetMap)
+		for (TTuple<int32, FStrategyEntrySlotData>& SlotData : GlobalIndexToSlotData)
 		{
-			const int32 MappedGlobalIndex = Pair.Key;
-			UUserWidget* Widget = Pair.Value.Get();
+			const int32 MappedGlobalIndex = SlotData.Key;
+			UUserWidget* Widget = SlotData.Value.Widget.Get();
 			if (!Widget) { continue; }
 
 			const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
@@ -289,10 +292,10 @@ void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, cons
 	const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
 
 	// Update the interaction tag for all widgets of this data index
-	for (auto& Pair : IndexToWidgetMap)
+	for (TTuple<int32, FStrategyEntrySlotData>& SlotData : GlobalIndexToSlotData)
 	{
-		const int32 MappedGlobalIndex = Pair.Key;
-		const UUserWidget* Widget     = Pair.Value.Get();
+		const int32 MappedGlobalIndex = SlotData.Key;
+		const UUserWidget* Widget     = SlotData.Value.Widget.Get();
 		if (!Widget) { continue; }
 
 		const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
@@ -330,8 +333,8 @@ void UBaseStrategyWidget::NativeConstruct()
 	if (LayoutStrategy)
 	{
 		const int32 MaxVisibleEntries = GetLayoutStrategyChecked().MaxVisibleEntries;
-		IndexToTagStateMap.Reserve(MaxVisibleEntries);
-		IndexToWidgetMap.Reserve(MaxVisibleEntries);
+		const int32 InitialCapacity = MaxVisibleEntries + GetLayoutStrategyChecked().NumDeactivatedEntries;
+		GlobalIndexToSlotData.Reserve(InitialCapacity);
 	}
 
 	TryCreateDefaultDataProvider();
@@ -351,26 +354,7 @@ void UBaseStrategyWidget::NativeDestruct()
 
 TSharedRef<SWidget> UBaseStrategyWidget::RebuildWidget()
 {
-	if (IsDesignTime())
-	{
-		return SNew(SSpacer);
-	}
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%s: No valid world found!"), *GetName());
-		return SNew(SSpacer);
-	}
-	APlayerController* PC = GetOwningLocalPlayer()->GetPlayerController(World);
-	if (!PC)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%s: No valid player controller found!"), *GetName());
-		return SNew(SSpacer);
-	}
-	
 	StrategyCanvasPanel = SNew(SStrategyCanvasPanel);
-	StrategyCanvasPanel->InitializePools(World, PC);
-
 	return StrategyCanvasPanel.ToSharedRef();
 }
 
@@ -379,6 +363,16 @@ void UBaseStrategyWidget::ReleaseSlateResources(bool bReleaseChildren)
 	Super::ReleaseSlateResources(bReleaseChildren);
 
 	StrategyCanvasPanel.Reset();
+}
+
+void UBaseStrategyWidget::SynchronizeProperties()
+{
+	Super::SynchronizeProperties();
+
+	if (StrategyCanvasPanel)
+	{
+		StrategyCanvasPanel->SetDebugPaint(bPaintEntryWidgetBorders);
+	}
 }
 
 int32 UBaseStrategyWidget::NativePaint(
@@ -429,24 +423,25 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	}
 
 	// (1) If a widget already exists for this index, reuse it
-	if (const TWeakObjectPtr<UUserWidget>* ExistingPtr = IndexToWidgetMap.Find(GlobalIndex))
+	if (const FStrategyEntrySlotData* ExistingData = GlobalIndexToSlotData.Find(GlobalIndex))
 	{
-		if (ExistingPtr->IsValid())
+		if (ExistingData->IsValid())
 		{
 			UE_LOG(
 				LogStrategyUI, 
 				Verbose, 
-				TEXT("Reusing widget %s for global index %d"),
-				*ExistingPtr->Get()->GetName(),
+				TEXT("%hs: Reusing widget %s for global index %d"),
+				__FUNCTION__,
+				*ExistingData->Widget->GetName(),
 				GlobalIndex
 			);
-			return ExistingPtr->Get();
+			return ExistingData->Widget.Get();
 		}
 	}
 
 	// (2) Determine the data item for this index
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-	const UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+	UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 
 	// (3) Decide which widget class to use (could come from data item, or fallback)
 	TSubclassOf<UUserWidget> DesiredClass = nullptr;
@@ -488,26 +483,40 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 		DesiredClass = DefaultEntryWidgetClass;
 	}
 
+	// Find (or create) a pool for this widget class
+	FUserWidgetPool& Pool = WidgetPools.FindOrAdd(DesiredClass);
+	if (!Pool.IsInitialized())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			Pool.SetWorld(World);
+		}
+		if (APlayerController* PC = GetOwningPlayer())
+		{
+			Pool.SetDefaultPlayerController(PC);
+		}
+	}
+
 	// (4) Spawn from the pool
-	UUserWidget* NewWidget = StrategyCanvasPanel->AcquireEntryWidget(DesiredClass, GlobalIndex);
+	UUserWidget* NewWidget = Pool.GetOrCreateInstance(DesiredClass);
 	check(NewWidget);
 
-	UE_LOG(LogStrategyUI, Verbose, TEXT("Creating new widget %s for global index %d"), *NewWidget->GetName(), GlobalIndex);
-	IndexToWidgetMap.Add(GlobalIndex, NewWidget);
-
-	// If no state container yet, initialize it with "Pooled"
-	if (!IndexToTagStateMap.Contains(GlobalIndex))
+	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Used GetOrCreateInstance to get widget %s for global index %d"), __FUNCTION__, *NewWidget->GetName(), GlobalIndex);
+	FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindOrAdd(GlobalIndex);
+	SlotData.Widget = NewWidget;
+	SlotData.TagState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
+	if (!SlotData.CachedSlateWidget.IsValid())
 	{
-		FGameplayTagContainer InitialStateContainer;
-		InitialStateContainer.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
-		IndexToTagStateMap.Add(GlobalIndex, InitialStateContainer);
+		// Only do this once for this particular UUserWidget
+		SlotData.CachedSlateWidget = NewWidget->TakeWidget();
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Cached Slate widget %s for UWidget %s"), __FUNCTION__, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(SlotData.CachedSlateWidget), *NewWidget->GetName());
+	}
 
-		if (NewWidget->Implements<UStrategyEntryBase>())
-		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
-				NewWidget, FGameplayTagContainer(), InitialStateContainer
-			);
-		}
+	if (NewWidget->Implements<UStrategyEntryBase>())
+	{
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
+			NewWidget, FGameplayTagContainer(), FGameplayTagContainer(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled)
+		);
 	}
 
 	// If this data index is already in our "selected" set, update the widget
@@ -518,9 +527,11 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	}
 
 	// Assign data to the widget
-	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>())
+	const bool bHasDataChanged = SlotData.LastAssignedItem != DataItem;
+	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>())// && bHasDataChanged)
 	{
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Items[DataIndex]);
+		SlotData.LastAssignedItem = DataItem;
 	}
 
 	return NewWidget;
@@ -535,20 +546,27 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 		return;
 	}
 
-	if (const TWeakObjectPtr<UUserWidget>* Ptr = IndexToWidgetMap.Find(GlobalIndex))
+	if (FStrategyEntrySlotData* SlotData = GlobalIndexToSlotData.Find(GlobalIndex))
 	{
-		if (Ptr->IsValid())
+		if (SlotData->IsValid())
 		{
-			if (UUserWidget* Widget = Ptr->Get())
+			if (UUserWidget* Widget = SlotData->Widget.Get())
 			{
-				// Transition it back to "Pooled" in IndexToTagStateMap
-				if (IndexToTagStateMap.Contains(GlobalIndex))
+				const TSubclassOf<UUserWidget> Class = Widget->GetClass();
+				if (FUserWidgetPool* Pool = WidgetPools.Find(Class))
 				{
-					FGameplayTagContainer OldState = IndexToTagStateMap[GlobalIndex];
+					Pool->Release(Widget);
+					UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Released widget %s for global index %d"), __FUNCTION__, *Widget->GetName(), GlobalIndex);
+				}
+				
+				// Transition it back to "Pooled" in IndexToTagStateMap
+				if (GlobalIndexToSlotData.Contains(GlobalIndex))
+				{
+					FGameplayTagContainer OldState = SlotData->TagState;
 					FGameplayTagContainer PooledState;
 					PooledState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
 
-					if (Widget->Implements<UStrategyEntryBase>())
+					if (Widget->Implements<UStrategyEntryBase>() && OldState != PooledState)
 					{
 						IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
 							Widget, OldState, PooledState
@@ -558,10 +576,9 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 			}
 		}
 
-		StrategyCanvasPanel->ReleaseEntryWidget(GlobalIndex);
-		IndexToWidgetMap.Remove(GlobalIndex);
-		IndexToTagStateMap.Remove(GlobalIndex);
-		IndexToPositionMap.Remove(GlobalIndex);
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Removing slot data for global index %d"), __FUNCTION__, GlobalIndex);
+		SlotData->Reset();
+		GlobalIndexToSlotData.Remove(GlobalIndex);
 	}
 }
 
@@ -570,8 +587,8 @@ void UBaseStrategyWidget::ReleaseUndesiredWidgets(const TSet<int32>& DesiredIndi
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	TArray<int32> CurrentIndices;
-	IndexToWidgetMap.GenerateKeyArray(CurrentIndices);
-	for (int32 OldIndex : CurrentIndices)
+	GlobalIndexToSlotData.GenerateKeyArray(CurrentIndices);
+	for (const int32 OldIndex : CurrentIndices)
 	{
 		if (!DesiredIndices.Contains(OldIndex))
 		{
@@ -596,7 +613,7 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 }
 
 void UBaseStrategyWidget::NotifyStrategyEntryStateChange(
-	int32 GlobalIndex,
+	const int32 GlobalIndex,
 	UUserWidget* Widget,
 	const FGameplayTagContainer& OldState,
 	const FGameplayTagContainer& NewState
@@ -606,7 +623,8 @@ void UBaseStrategyWidget::NotifyStrategyEntryStateChange(
 
 	if (NewState != OldState)
 	{
-		IndexToTagStateMap[GlobalIndex] = NewState;
+		FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindChecked(GlobalIndex);
+		SlotData.TagState = NewState;
 
 		if (Widget->Implements<UStrategyEntryBase>())
 		{
@@ -624,12 +642,22 @@ void UBaseStrategyWidget::TryHandlePooledEntryStateTransition(const int32 Global
 		? StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active
 		: StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
 
-	if (const FGameplayTagContainer* ExistingTagsPtr = IndexToTagStateMap.Find(GlobalIndex))
+	const FStrategyEntrySlotData* SlotData = GlobalIndexToSlotData.Find(GlobalIndex);
+	if (!SlotData || !SlotData->IsValid())
 	{
-		if (ExistingTagsPtr->HasTag(DesiredTag))
-		{
-			return; // Already in correct state
-		}
+		AcquireEntryWidget(GlobalIndex);
+		SlotData = GlobalIndexToSlotData.Find(GlobalIndex);
+	}
+
+	if (!SlotData)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("Failed to acquire slot data for index %d"), GlobalIndex);
+		return;
+	}
+
+	if (SlotData->TagState.HasTag(DesiredTag))
+	{
+		return; // Already in correct state
 	}
 
 	UpdateEntryLifecycleTagState(GlobalIndex, DesiredTag);
@@ -647,13 +675,13 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 		return;
 	}
 
-	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
+	FGameplayTagContainer& TagContainer = GlobalIndexToSlotData.FindOrAdd(GlobalIndex).TagState;
 	if (TagContainer.HasTag(NewStateTag))
 	{
 		return; // No change
 	}
 
-	FGameplayTagContainer OldTags = TagContainer;
+	const FGameplayTagContainer OldTags = TagContainer;
 
 	// Remove other EntryLifecycle tags
 	TArray<FGameplayTag> TagsToRemove;
@@ -698,7 +726,7 @@ void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex
 		return;
 	}
 
-	FGameplayTagContainer& TagContainer = IndexToTagStateMap.FindOrAdd(GlobalIndex);
+	FGameplayTagContainer& TagContainer = GlobalIndexToSlotData.FindOrAdd(GlobalIndex).TagState;
 	FGameplayTagContainer OldTags = TagContainer;
 
 	if (bEnable)
@@ -748,62 +776,131 @@ void UBaseStrategyWidget::UpdateWidgets()
 		return;
 	}
 
+	if (!LayoutStrategy)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: No LayoutStrategy found!"), __FUNCTION__);
+		return;
+	}
+
 	// Gather desired indices from the layout
-	TSet<int32> DesiredIndices = GetLayoutStrategyChecked().ComputeDesiredGlobalIndices();
+	TSet<int32> NewDesiredIndices = GetLayoutStrategyChecked().ComputeDesiredGlobalIndices();
 
-	FString DesiredIndicesStr;
-	for (const int32 Index : DesiredIndices)
+	const bool bWantsUpdate = HasNewDesiredIndices(NewDesiredIndices);
+	if (bWantsUpdate)
 	{
-		DesiredIndicesStr += FString::Printf(TEXT("%d, "), Index);
+		// (1) Release old widgets not in the new set
+		ReleaseUndesiredWidgets(NewDesiredIndices);
+
+		// (2) Possibly handle transitions out of "pooled" (like TryHandlePooledEntryStateTransition)
+		//     If you do it for all new indices:
+		for (const int32 Idx : NewDesiredIndices)
+		{
+			TryHandlePooledEntryStateTransition(Idx);
+		}
+
+		// (3) Rebuild the panel, forcing each widget to re-acquire or update
+		RebuildSlateForIndices(NewDesiredIndices, /*bForceUpdateWidget=*/true);
 	}
-	UE_LOG(LogStrategyUI, Verbose, TEXT("Desired global indices: %s"), *DesiredIndicesStr);
-
-	// 1) Release old widgets not in DesiredIndices
-	ReleaseUndesiredWidgets(DesiredIndices);
-
-	// We'll fill these structures so we can do a single call to UpdateItemData
-	TArray<int32> FinalIndices;
-	FinalIndices.Reserve(DesiredIndices.Num());
-
-	TMap<int32, bool> IndexToVisibilityMap;
-	TMap<int32, float> IndexToDepthMap;
-
-	// 5) For each desired GlobalIndex
-	for (int32 GlobalIndex : DesiredIndices)
+	else
 	{
-		// (a) Possibly transition from "Pooled" to "Active" or "Deactivated"
-		TryHandlePooledEntryStateTransition(GlobalIndex);
-
-		// (b) Determine final position via layout
-		PositionWidget(GlobalIndex); 
-
-		// (c) Acquire / update the widget
-		UpdateEntryWidget(GlobalIndex);
-
-		// (d) Decide if it's visible and possibly compute a depth or z‐order
-		const bool bIsVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
-		const float DepthValue = 0.f; // or some distance from camera, etc.
-
-		// (e) Fill out the arrays/maps for a single pass in the Slate panel
-		FinalIndices.Add(GlobalIndex);
-		IndexToVisibilityMap.Add(GlobalIndex, bIsVisible);
-		IndexToDepthMap.Add(GlobalIndex, DepthValue);
+		// Indices have NOT changed, so we only update positions/visibility
+		// without re-releasing or re-updating the underlying widget data.
+		RebuildSlateForIndices(NewDesiredIndices, /*bForceUpdateWidget=*/false);
 	}
 
-	// 6) Finally, pass all data to the panel in one call
-	StrategyCanvasPanel->UpdateChildrenData(
-		FinalIndices,
-		IndexToPositionMap,      // TMap<int32, FVector2D>
-		IndexToVisibilityMap,    // TMap<int32, bool>
-		IndexToDepthMap          // TMap<int32, float>
-	);
+	// Save new set
+	LastDesiredIndices = NewDesiredIndices;
 }
 
-void UBaseStrategyWidget::PositionWidget(const int32 GlobalIndex)
+bool UBaseStrategyWidget::HasNewDesiredIndices(const TSet<int32>& NewIndices) const
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
-	const FVector2D& ItemLocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex) + Center;
-	IndexToPositionMap.Add(GlobalIndex, ItemLocalPos);
+	const bool bAreSetsIdentical = (LastDesiredIndices.Num() == NewIndices.Num()
+	   && LastDesiredIndices.Includes(NewIndices)
+	   && NewIndices.Includes(LastDesiredIndices));
+	return !bAreSetsIdentical;
+}
+
+void UBaseStrategyWidget::RebuildSlateForIndices(const TSet<int32>& InIndices, const bool bForceUpdateWidget)
+{
+	if (!StrategyCanvasPanel.IsValid())
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: No StrategyCanvasPanel found!"), __FUNCTION__);
+		return;
+	}
+
+	// Create a temporary map to hold minimal slot data for the Slate panel.
+	// (This is our “minimal” data that our improved SStrategyCanvasPanel expects.)
+	TMap<int32, FStrategyCanvasSlotData_Minimal> MinimalSlotDataMap;
+	MinimalSlotDataMap.Reserve(InIndices.Num());
+
+	// Iterate once over all global indices that should be shown.
+	for (int32 GlobalIndex : InIndices)
+	{
+		// Optionally force an update/re-acquisition of the entry widget.
+		if (bForceUpdateWidget)
+		{
+			UpdateEntryWidget(GlobalIndex);
+		}
+
+		// Compute the final position for this entry
+		const FVector2D ItemLocalPos = GetLayoutStrategyChecked().GetItemPosition(GlobalIndex);
+		// For now, we use a fixed depth. @TODO: Implement depth handling in the layout strategy.
+		constexpr float DepthValue = 0.f;
+
+		// Find the slot data for this global index.
+		FStrategyEntrySlotData* SlotData = GlobalIndexToSlotData.Find(GlobalIndex);
+		if (!SlotData)
+		{
+			// If none exists, try to acquire the widget and then retrieve the slot data.
+			AcquireEntryWidget(GlobalIndex);
+			SlotData = GlobalIndexToSlotData.Find(GlobalIndex);
+			if (!SlotData)
+			{
+				UE_LOG(LogStrategyUI, Warning, TEXT("Could not create slot for index %d"), GlobalIndex);
+				continue;
+			}
+		}
+
+		// Update the slot data with the computed position and depth.
+		UE_LOG(
+			LogStrategyUI,
+			Verbose,
+			TEXT("%hs: Updating slot data for global index %d at position %s"),
+			__FUNCTION__,
+			GlobalIndex,
+			*ItemLocalPos.ToString()
+		);
+		SlotData->Position = ItemLocalPos;
+		SlotData->Depth = DepthValue;
+
+		// Now convert our full slot data into minimal data required by the Slate panel.
+		if (SlotData->IsValid())
+		{
+			const TSharedPtr<SWidget> UnderlyingSlateWidget = SlotData->CachedSlateWidget;
+			if (!UnderlyingSlateWidget.IsValid())
+			{
+				UE_LOG(LogStrategyUI, Warning, TEXT("No cached Slate widget for global index %d"), GlobalIndex);
+				continue;
+			}
+
+			FStrategyCanvasSlotData_Minimal MinimalData;
+			MinimalData.Position = SlotData->Position;
+			MinimalData.Depth = SlotData->Depth;
+			MinimalData.Widget = UnderlyingSlateWidget.ToSharedRef();
+			UE_LOG(
+				LogStrategyUI,
+				Verbose,
+				TEXT("%hs: Adding minimal data for global index %d at position %s"),
+				__FUNCTION__,
+				GlobalIndex,
+				*ItemLocalPos.ToString()
+			);
+			MinimalSlotDataMap.Add(GlobalIndex, MinimalData);
+		}
+	}
+
+	// Do one single update call to the Slate panel, passing in the minimal data map.
+	StrategyCanvasPanel->UpdateChildrenData(MinimalSlotDataMap);
 }
 #pragma endregion EntryWidgetsPoolAndHandling
 
@@ -820,7 +917,8 @@ void UBaseStrategyWidget::SetItems_Internal_Implementation(const TArray<UObject*
 	UE_LOG(
 		LogStrategyUI,
 		Verbose,
-		TEXT("Initializing strategy %s as host for %d items"),
+		TEXT("%hs: Initializing strategy %s as host for %d items"),
+		__FUNCTION__,
 		*GetName(),
 		GetItemCount()
 	);

@@ -138,7 +138,7 @@ public:
 
 protected:
 	//----------------------------------------------------------------------------------------------
-	// UUserWidget & UWidget Overrides
+	// UWidget Overrides
 	//----------------------------------------------------------------------------------------------
 #pragma region UUserWidget & UWidget Overrides
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;

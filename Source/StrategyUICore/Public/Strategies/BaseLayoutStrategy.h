@@ -7,7 +7,7 @@
 #include "Interfaces/ILayoutStrategyHost.h"
 #include "BaseLayoutStrategy.generated.h"
 
-#define MAX_ENTRY_COUNT 64
+#define MAX_ENTRY_COUNT 512
 
 class UWidget;
 
@@ -47,6 +47,16 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseLayoutStrategy|Entry", meta=(ClampMin="1"))
 	int32 MaxVisibleEntries = 8;
+
+	/**
+	 * Number of entries to keep deactivated (hidden) outside the bounds of the visible window.
+	 * This is useful for potentially adding animations to entries as they scroll in/out of view,
+	 * or for preloading data for entries that may soon be visible.
+	 *
+	 * Set this as low as is necessary as it can lead to performance issues with many hidden widgets.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|RadialStrategy|Entry", meta=(ClampMin="0"), meta=(ClampMax="10"))
+	int32 NumDeactivatedEntries = 2;
 
 	/**
 	 * The set of global indices represented in the layout.

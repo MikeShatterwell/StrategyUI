@@ -4,6 +4,8 @@
 
 #include <Engine/Canvas.h>
 
+#include "Widgets/BaseStrategyWidget.h"
+
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include <Engine/Engine.h>
@@ -234,8 +236,7 @@ void FReflectedObjectsDebugCategory::ReflectObjectProperties(UObject* Obj)
 				{
 					if (StructProp->Struct == TBaseStructure<FGameplayTagContainer>::Get())
 					{
-						const FGameplayTagContainer* TagContainer = static_cast<const FGameplayTagContainer*>(ValuePtr);
-						if (TagContainer)
+						if (const FGameplayTagContainer* TagContainer = static_cast<const FGameplayTagContainer*>(ValuePtr))
 						{
 							ValueStr = TagContainer->ToString();
 						}
@@ -316,6 +317,26 @@ void FReflectedObjectsDebugCategory::ReflectTMapProperty(const FMapProperty* Map
 				{
 					const FGameplayTagContainer* Tags = static_cast<const FGameplayTagContainer*>(ValuePtr);
 					ValStr = Tags ? Tags->ToString() : TEXT("None");
+				}
+				if (StructValProp->Struct == TBaseStructure<FStrategyEntrySlotData>::Get())
+				{
+					if (const FStrategyEntrySlotData* SlotData = static_cast<const FStrategyEntrySlotData*>(ValuePtr))
+					{
+						ValStr = SlotData->ToString();
+					}
+				}
+				if (StructValProp->Struct == TBaseStructure<FUserWidgetPool>::Get())
+				{
+					if (const FUserWidgetPool* Pool = static_cast<const FUserWidgetPool*>(ValuePtr))
+					{
+						ValStr += TEXT("Active: \n");
+						for (const TArray<UUserWidget*>& Widgets = Pool->GetActiveWidgets(); const UUserWidget* Widget : Widgets)
+						{
+							ValStr += TEXT("\t\t");
+							ValStr += Widget ? Widget->GetName() : TEXT("null");
+							ValStr += TEXT(", \n");
+						}
+					}
 				}
 				else
 				{

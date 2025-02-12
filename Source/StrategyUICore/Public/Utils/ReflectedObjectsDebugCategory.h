@@ -81,6 +81,7 @@ private:
 	/** Affects line height, tweak this to improve pagination fit. */
 	float CharHeight = 30.f;
 
+	void ReflectTArrayProperty(const FArrayProperty* ArrayProp, UObject* Obj, const FString& DisplayName);
 	/** Helper method: reflect a single UObject, printing lines via AddTextLine(). */
 	void ReflectObjectProperties(UObject* Obj);
 

@@ -2,9 +2,7 @@
 
 #include "ExampleWidgets/RadialStrategyWidget.h"
 
-#include <Components/CanvasPanelSlot.h>
 #include <Blueprint/WidgetTree.h>
-#include <Components/CanvasPanel.h>
 #include <Editor/WidgetCompilerLog.h>
 #include <Fonts/SlateFontInfo.h>
 #include <Styling/CoreStyle.h>
@@ -287,6 +285,7 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	}
 	LastInputAngle = CurrentPointerAngle;
 
+	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Updating widgets for angle %.1f"),__FUNCTION__, CurrentPointerAngle);
 	UpdateWidgets();
 }
 
@@ -366,12 +365,13 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 			const float Radius = GetLayoutStrategyChecked<URadialLayoutStrategy>().CalculateRadiusForGlobalIndex(GlobalIndex);
 
 			FString DebugString = FString::Printf(
-				TEXT("\nG=%d | D=%d\nAng=%.1f\nOff=%.1f\nRadius=%.1f"),
+				TEXT("\nG=%d | D=%d\nAng=%.1f\nOff=%.1f\nRadius=%.1f, LocalPos=%s"),
 				GlobalIndex, 
 				DataIndex, 
 				ItemAngleDeg, 
 				UnwoundAngle,
-				Radius
+				Radius,
+				*LocalPos.ToString()
 			);
 
 			if (bIsFocused)
@@ -393,6 +393,9 @@ void URadialStrategyWidget::DrawItemDebugInfo(const FGeometry& AllottedGeometry,
 
 			const FVector2D ScreenPos = Center + LocalPos;
 			FSlateLayoutTransform LayoutTransform(1.f, ScreenPos);
+
+			UE_LOG(LogStrategyUI, Verbose, TEXT("Drawing debug item G=%d | D=%d | Ang=%.1f | Off=%.1f | Radius=%.1f | LocalPos=%s"),
+				GlobalIndex, DataIndex, ItemAngleDeg, UnwoundAngle, Radius, *LocalPos.ToString());
 
 			FSlateDrawElement::MakeText(
 				OutDrawElements,
@@ -481,7 +484,7 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// We'll use this same size below to compute radius in normalized [0..1].
 	if (EntrySize.Length() < KINDA_SMALL_NUMBER)
 	{
-		UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Entry widget %s has a zero size! Make sure at least one prepass has occured, otherwise the widget won't have valid geometry."), __FUNCTION__, *EntryWidget->GetName());
+		//UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Entry widget %s has a zero size! Make sure at least one prepass has occured, otherwise the widget won't have valid geometry."), __FUNCTION__, *EntryWidget->GetName());
 		return;
 	}
 	bAreChildrenReady = true; // If one widget is ready (aka has a valid size), consider them all ready
@@ -516,22 +519,17 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// -------------------------------------------------------------------
 	// 3) Manually compute the container center in this widget’s local coords
 	// -------------------------------------------------------------------
-	float UVCenterX = 0.5f;
-	float UVCenterY = 0.5f;
-	
-	const FVector2D& SlotPos = IndexToPositionMap.FindChecked(InGlobalIndex);
+	const FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindChecked(InGlobalIndex);
+
+	const FVector2D& SlotPos = SlotData.Position;
 	// Where does the widget’s top-left corner end up in container coords?
 	const FVector2D WidgetTopLeftInContainer = SlotPos - (EntrySize * 0.5f);
 	const FVector2D& CenterInWidgetLocal = 	Center - WidgetTopLeftInContainer;
+	
+	FVector2D UVCenter = FVector2D(0.5f) - (SlotPos / EntrySize);
 
-	// Finally, to convert from local pixel coords -> UV [0..1], 
-	// we divide by the widget’s size:
-	if (EntrySize.X > KINDA_SMALL_NUMBER && EntrySize.Y > KINDA_SMALL_NUMBER)
-	{
-		UVCenterX = CenterInWidgetLocal.X / EntrySize.X;
-		UVCenterY = CenterInWidgetLocal.Y / EntrySize.X;
-	}
-
+	UE_LOG(LogStrategyUI, Verbose, TEXT("Computed material data for widget %s: Center=(%.1f, %.1f), UVCenter=(%s), WedgeWidth=%.1f, AngleOffset=%.1f based on SlotPos %s, CenterInWidgetLocal %s, WidgetTopLeftInContainer:%s, EntrySize %s"),
+		*EntryWidget->GetName(), Center.X, Center.Y, *UVCenter.ToString(), WedgeWidthN, AngleOffsetN, *SlotPos.ToString(), *CenterInWidgetLocal.ToString(), *WidgetTopLeftInContainer.ToString(), *EntrySize.ToString());
 	// -------------------------------------------------------------------
 	// 4) Distance factor & radial extents
 	// -------------------------------------------------------------------
@@ -547,8 +545,8 @@ void URadialStrategyWidget::ConstructMaterialData(
 	// 5) Fill in the final material data
 	// -------------------------------------------------------------------
 	FRadialItemMaterialData MatData;
-	MatData.UVCenterX       = UVCenterX;
-	MatData.UVCenterY       = UVCenterY;
+	MatData.UVCenterX       = UVCenter.X;
+	MatData.UVCenterY       = UVCenter.Y;
 	MatData.WedgeWidth      = WedgeWidthN;
 	MatData.AngleOffset     = AngleOffsetN;
 	MatData.SpiralMinRadius = SpiralMinRadiusN;
@@ -563,16 +561,9 @@ void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	UUserWidget* Widget = AcquireEntryWidget(InGlobalIndex);
-	
-	const int32* GlobalIndexKey = IndexToWidgetMap.FindKey(Widget);
-	if (GlobalIndexKey == nullptr || !Widget)
-	{
-		UE_LOG(LogStrategyUI, Error, TEXT("%hs: Invalid widget or index"), __FUNCTION__);
-		return;
-	}
+	const FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindChecked(InGlobalIndex);
 
-	const int32 GlobalIndex = *GlobalIndexKey;
-	const FGameplayTagContainer& ItemState = IndexToTagStateMap.FindChecked(GlobalIndex);
+	const FGameplayTagContainer& ItemState = SlotData.TagState;
 
 	if (Widget->Implements<URadialItemEntry>())
 	{
@@ -581,9 +572,10 @@ void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 		{
 			// Only update material data for active entries 
 			FRadialItemMaterialData MaterialData;
-			ConstructMaterialData(Widget, GlobalIndex, MaterialData);
+			ConstructMaterialData(Widget, InGlobalIndex, MaterialData);
 			UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Syncing material data %s for widget %s"), *MaterialData.ToString(), *Widget->GetName());
 			IRadialItemEntry::Execute_BP_SetRadialItemMaterialData(Widget, MaterialData);
+			Widget->InvalidateLayoutAndVolatility();
 		}
 	}
 }
