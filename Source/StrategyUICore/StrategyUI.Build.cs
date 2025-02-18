@@ -41,18 +41,13 @@ public class StrategyUI : ModuleRules
 				"UMG",
 				"GameplayTags",
 				"DeveloperSettings",
+				"InputCore", 
 				"GameplayDebugger",
-				"InputCore"
+				"ModelViewViewModel"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
 		
-		
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-				// ... add any modules that your module loads dynamically here ...
-			}
-			);
+		PublicDefinitions.Add(ModuleDirectory.Contains("ModelViewViewModel") ? "WITH_MVVM=1" : "WITH_MVVM=0");
 	}
 }

@@ -82,6 +82,7 @@ void SStrategyCanvasPanel::UpdateChildrenData(const TMap<int32, FStrategyCanvasS
 				Slot.Position = NewData.Position;
 				Slot.Depth = NewData.Depth;
 				Slot.Widget = NewData.Widget;
+				Slot[NewData.Widget.ToSharedRef()]; // Update the slot's internal widget, adding it properly to the widget tree
 				
 				UE_LOG(LogStrategyUI, VeryVerbose, TEXT("Updated existing slot %d for global index %d"), 
 					*ExistingSlotIndex, GlobalIndex);

@@ -71,7 +71,7 @@ public:
 		{
 			if (const UUserWidget* WrappedObject = ObjWidget->GetWidgetObject())
 			{
-				return WrappedObject->GetName();
+				return FString::Printf(TEXT("%s: %s"), *InWidget->GetTypeAsString(), *WrappedObject->GetName());
 			}
 		}
 
@@ -89,7 +89,7 @@ public:
 		{
 			if (const UUserWidget* WrappedObject = ObjWidget->GetWidgetObject())
 			{
-				return WrappedObject->GetName();
+				return FString::Printf(TEXT("%s: %s"), *InWidget.Pin()->GetTypeAsString(), *WrappedObject->GetName());
 			}
 		}
 

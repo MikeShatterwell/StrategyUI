@@ -276,8 +276,9 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 		UpdateWidgets();
 		return;
 	}
-	
-	static float LastInputAngle = FLT_MAX;
+	UpdateWidgets();
+
+	/*static float LastInputAngle = FLT_MAX;
 	if (CurrentPointerAngle == LastInputAngle && bAreChildrenReady)
 	{
 		// Avoid updating the layout if the angle hasn't changed, improving idle performance
@@ -286,7 +287,7 @@ void URadialStrategyWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	LastInputAngle = CurrentPointerAngle;
 
 	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Updating widgets for angle %.1f"),__FUNCTION__, CurrentPointerAngle);
-	UpdateWidgets();
+	UpdateWidgets();*/
 }
 
 int32 URadialStrategyWidget::NativePaint(

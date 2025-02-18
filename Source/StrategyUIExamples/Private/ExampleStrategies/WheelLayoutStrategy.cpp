@@ -9,7 +9,7 @@
 //--------------------------------------------------------------------------
 // BaseLayoutStrategy overrides
 //--------------------------------------------------------------------------
-void UWheelLayoutStrategy::InitializeStrategy(TScriptInterface<ILayoutStrategyHost> Host)
+void UWheelLayoutStrategy::InitializeStrategy(const TScriptInterface<ILayoutStrategyHost> Host)
 {
 	Super::InitializeStrategy(Host);
 

@@ -16,7 +16,6 @@
 #include "Utils/ReflectedObjectsDebugCategory.h"
 #include "Widgets/SStrategyCanvasPanel.h"
 
-#define WITH_MVVM FModuleManager::Get().IsModuleLoaded("ModelViewViewModel")
 #define IS_DATA_PROVIDER_READY_AND_VALID(DataProvider) \
 	IsValid(DataProvider) && DataProvider->Implements<UStrategyDataProvider>() && IStrategyDataProvider::Execute_IsProviderReady(DataProvider)
 
@@ -53,7 +52,7 @@ void UBaseStrategyWidget::ValidateCompiledDefaults(class IWidgetCompilerLog& Com
 	}
 	
 	// Warn if MVVM is loaded but also using DataProvider
-	if (DataProvider && DefaultDataProviderClass && WITH_MVVM)
+	if (DataProvider && DefaultDataProviderClass && FModuleManager::Get().IsModuleLoaded("ModelViewViewModel"))
 	{
 		CompileLog.Warning(FText::FromString(TEXT(
 			"You are using the MVVM plugin but have set a DataProvider in BaseStrategyWidget. "
@@ -78,7 +77,6 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 		}
 
 		Reset();
-		SynchronizeProperties();
 		TryCreateDefaultDataProvider();
 		RefreshFromProvider();
 		UpdateWidgets();
@@ -86,6 +84,8 @@ void UBaseStrategyWidget::PostEditChangeProperty(struct FPropertyChangedEvent& P
 #if WITH_GAMEPLAY_DEBUGGER
 		UpdateReflectedObjectsDebugCategory();
 #endif
+
+		SynchronizeProperties();
 	}
 }
 
@@ -137,6 +137,50 @@ void UBaseStrategyWidget::SetItems(const TArray<UObject*>& InItems)
 	}
 
 	SetItems_Internal(InItems);
+}
+
+void UBaseStrategyWidget::AddItem(UObject* Item)
+{
+	if (!Item)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Attempted to add a nullptr item."), *GetName());
+		return;
+	}
+
+	Items.Add(Item);
+	SetItems(Items); // Re-set to trigger update.
+}
+
+void UBaseStrategyWidget::RemoveItem(UObject* Item)
+{
+	if (!Item)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Attempted to remove a nullptr item."), *GetName());
+		return;
+	}
+
+	const int32 RemovedCount = Items.Remove(Item);
+	if (RemovedCount > 0)
+	{
+		SetItems(Items); // Re-set to trigger update. Could be optimized.
+	}
+	else
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%s: Item not found in list, no removal occurred."), *GetName());
+	}
+}
+
+void UBaseStrategyWidget::ClearItems()
+{
+	if (Items.Num() > 0)
+	{
+		Items.Reset();
+		SetItems(Items); // Re-set to trigger update.
+	}
+	else
+	{
+		UE_LOG(LogStrategyUI, Verbose, TEXT("%s: Item list was already empty, no clear occurred."), *GetName());
+	}
 }
 
 void UBaseStrategyWidget::SetDataProvider(UObject* NewProvider)
@@ -289,7 +333,12 @@ void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, cons
 		return; // out-of-range (e.g., "gap" index)
 	}
 
-	const bool bAlreadySelected = SelectedDataIndices.Contains(DataIndex);
+	SetSelectedDataIndex(DataIndex, bShouldBeSelected);
+}
+
+void UBaseStrategyWidget::SetSelectedDataIndex(const int32 InDataIndex, const bool bShouldBeSelected)
+{
+	const bool bAlreadySelected = SelectedDataIndices.Contains(InDataIndex);
 	const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
 
 	// Update the interaction tag for all widgets of this data index
@@ -300,7 +349,7 @@ void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, cons
 		if (!Widget) { continue; }
 
 		const int32 MappedDataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(MappedGlobalIndex);
-		if (MappedDataIndex == DataIndex)
+		if (MappedDataIndex == InDataIndex)
 		{
 			UpdateEntryInteractionTagState(MappedGlobalIndex, SelectedState, bShouldBeSelected);
 		}
@@ -309,14 +358,56 @@ void UBaseStrategyWidget::SetSelectedGlobalIndex(const int32 InGlobalIndex, cons
 	// Add or remove from the selected set
 	if (bShouldBeSelected && !bAlreadySelected)
 	{
-		SelectedDataIndices.Add(DataIndex);
-		UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
-		OnItemSelected.Broadcast(DataIndex, Item);
+		SelectedDataIndices.Add(InDataIndex);
+		const UObject* Item = Items.IsValidIndex(InDataIndex) ? Items[InDataIndex] : nullptr;
+		OnItemSelected.Broadcast(InDataIndex, Item);
 	}
 	else if (!bShouldBeSelected && bAlreadySelected)
 	{
-		SelectedDataIndices.Remove(DataIndex);
+		SelectedDataIndices.Remove(InDataIndex);
 	}
+}
+
+void UBaseStrategyWidget::SetSelectedItem(UObject* Item)
+{
+	if (Item == nullptr)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Attempted to select a nullptr item."), *GetName());
+		return;
+	}
+
+	int32 DataIndex = Items.Find(Item);
+	if (DataIndex == INDEX_NONE)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Item not found in list, selection not changed."), *GetName());
+		return;
+	}
+
+	SetSelectedDataIndex(DataIndex, /*bShouldBeSelected*/ true);
+}
+
+bool UBaseStrategyWidget::GetSelectedItems(TArray<UObject*>& ItemsArray) const
+{
+	ItemsArray.Reset();
+	for (const int32 DataIndex : SelectedDataIndices)
+	{
+		if (Items.IsValidIndex(DataIndex))
+		{
+			ItemsArray.Add(Items[DataIndex]);
+		}
+	}
+	return ItemsArray.Num() > 0;
+}
+
+void UBaseStrategyWidget::ClearSelection()
+{
+	TArray<int32> IndicesToDeselect = SelectedDataIndices.Array(); // Copy to avoid modifying during iteration
+
+	for (const int32 DataIndex : IndicesToDeselect)
+	{
+		SetSelectedGlobalIndex(GetLayoutStrategyChecked().GlobalIndexToDataIndex(DataIndex), false);
+	}
+	SelectedDataIndices.Reset();
 }
 
 void UBaseStrategyWidget::ToggleFocusedIndexSelection()
@@ -442,7 +533,7 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 
 	// (2) Determine the data item for this index
 	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
-	UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+	const UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 
 	// (3) Decide which widget class to use (could come from data item, or fallback)
 	TSubclassOf<UUserWidget> DesiredClass = nullptr;
@@ -610,6 +701,7 @@ void UBaseStrategyWidget::UpdateEntryWidget(const int32 InGlobalIndex)
 		const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 		// (Optional) re‐assign if needed
 		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(Widget, Item);
+		TryHandlePooledEntryStateTransition(InGlobalIndex);
 	}
 }
 
@@ -838,7 +930,7 @@ void UBaseStrategyWidget::RebuildSlateForIndices(const TSet<int32>& InIndices, c
 	for (int32 GlobalIndex : InIndices)
 	{
 		// Optionally force an update/re-acquisition of the entry widget.
-		if (bForceUpdateWidget)
+		if (true)//bForceUpdateWidget)
 		{
 			UpdateEntryWidget(GlobalIndex);
 		}

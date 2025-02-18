@@ -54,7 +54,7 @@ public:
 
 	// The last assigned data item, for detecting changes
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
-	TWeakObjectPtr<UObject> LastAssignedItem = nullptr;
+	TWeakObjectPtr<const UObject> LastAssignedItem = nullptr;
 
 	virtual FString ToString() const
 	{
@@ -104,13 +104,13 @@ struct TBaseStructure<FStrategyEntrySlotData>
  * Delegate broadcast when an item gains focus.o
  * Provides the index and the data item object implementing UStrategyInteractiveEntry.
  */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemFocusedDelegate, int32, Index, UObject*, Item);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemFocusedDelegate, int32, Index, const UObject*, Item);
 
 /**
  * Delegate broadcast when an item is clicked or selected.
  * Provides the index and the data item object implementing UStrategyInteractiveEntry.
  */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemSelectedDelegate, int32, Index, UObject*, Item);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemSelectedDelegate, int32, Index, const UObject*, Item);
 
 /**
  * A generic container widget that supports a "layout strategy" object.
@@ -163,6 +163,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
 	virtual void SetItems(const TArray<UObject*>& InItems);
 
+	/** Returns the current item data array. */
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	const TArray<UObject*>& GetItems() const { return Items; }
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	virtual void AddItem(UObject* Item);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	virtual void RemoveItem(UObject* Item);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	virtual void ClearItems();
+
 	/**
 	 * Sets a new data provider for the strategy widget.
 	 * Unbinds from the existing provider (if any) and initializes the new provider.
@@ -187,6 +200,18 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget|Selection")
 	virtual void SetSelectedGlobalIndex(int32 InGlobalIndex, bool bShouldBeSelected);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	virtual void SetSelectedDataIndex(int32 InDataIndex, bool bShouldBeSelected);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	void SetSelectedItem(UObject* Item);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	bool GetSelectedItems(TArray<UObject*>& ItemsArray) const;
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget")
+	virtual void ClearSelection();
 
 	/** Toggles selection state of the currently focused data index. */
 	UFUNCTION(BlueprintCallable, Category="StrategyUI|BaseStrategyWidget|Selection")
