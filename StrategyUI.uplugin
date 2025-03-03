@@ -23,6 +23,11 @@
 			"Name": "StrategyUIExamples",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "PolicyUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	]
 }

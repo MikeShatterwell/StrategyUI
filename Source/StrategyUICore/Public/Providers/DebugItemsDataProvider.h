@@ -25,7 +25,7 @@ public:
 
 	/** Number of debug items to generate */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|Debug")
-	int32 DebugItemCount = 25;
+	int32 DebugItemCount = 2500;
 
 	// ~ Begin IStrategyDataProvider interface
 	virtual TArray<UObject*> GetDataItems_Implementation() const override

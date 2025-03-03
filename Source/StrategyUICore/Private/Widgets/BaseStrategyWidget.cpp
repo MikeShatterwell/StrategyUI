@@ -515,8 +515,8 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 
 	if (NewWidget->Implements<UStrategyEntryBase>())
 	{
-		IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
-			NewWidget, FGameplayTagContainer(), FGameplayTagContainer(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled)
+		NotifyStrategyEntryStateChange(
+			GlobalIndex, NewWidget, FGameplayTagContainer(), FGameplayTagContainer(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled)
 		);
 	}
 
@@ -567,12 +567,7 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 					FGameplayTagContainer PooledState;
 					PooledState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
 
-					if (Widget->Implements<UStrategyEntryBase>() && OldState != PooledState)
-					{
-						IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(
-							Widget, OldState, PooledState
-						);
-					}
+					NotifyStrategyEntryStateChange(GlobalIndex, Widget, OldState, PooledState);
 				}
 			}
 		}
@@ -709,10 +704,7 @@ void UBaseStrategyWidget::UpdateEntryLifecycleTagState(const int32 GlobalIndex, 
 	// Notify the widget
 	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
 	{
-		if (Widget->Implements<UStrategyEntryBase>())
-		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldTags, TagContainer);
-		}
+		NotifyStrategyEntryStateChange(GlobalIndex, Widget, OldTags, TagContainer);
 	}
 }
 
@@ -741,10 +733,10 @@ void UBaseStrategyWidget::UpdateEntryInteractionTagState(const int32 GlobalIndex
 
 	if (UUserWidget* Widget = AcquireEntryWidget(GlobalIndex))
 	{
+		NotifyStrategyEntryStateChange(GlobalIndex, Widget, OldTags, TagContainer);
+
 		if (Widget->Implements<UStrategyEntryBase>())
 		{
-			IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(Widget, OldTags, TagContainer);
-
 			// Optional: call focus/selection change callbacks
 			const FGameplayTag& FocusedTag  = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
 			const FGameplayTag& SelectedTag = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
@@ -785,39 +777,28 @@ void UBaseStrategyWidget::UpdateWidgets()
 
 	// Gather desired indices from the layout
 	TSet<int32> NewDesiredIndices = GetLayoutStrategyChecked().ComputeDesiredGlobalIndices();
+	
+	// (1) Release old widgets not in the new set
+	ReleaseUndesiredWidgets(NewDesiredIndices);
 
-	const bool bWantsUpdate = HasNewDesiredIndices(NewDesiredIndices);
-	if (bWantsUpdate)
+	// (2) Possibly handle transitions out of "pooled" (like TryHandlePooledEntryStateTransition)
+	for (const int32 Idx : NewDesiredIndices)
 	{
-		// (1) Release old widgets not in the new set
-		ReleaseUndesiredWidgets(NewDesiredIndices);
-
-		// (2) Possibly handle transitions out of "pooled" (like TryHandlePooledEntryStateTransition)
-		//     If you do it for all new indices:
-		for (const int32 Idx : NewDesiredIndices)
-		{
-			TryHandlePooledEntryStateTransition(Idx);
-		}
-
-		// (3) Rebuild the panel, forcing each widget to re-acquire or update
-		RebuildSlateForIndices(NewDesiredIndices, /*bForceUpdateWidget=*/true);
-	}
-	else
-	{
-		// Indices have NOT changed, so we only update positions/visibility
-		// without re-releasing or re-updating the underlying widget data.
-		RebuildSlateForIndices(NewDesiredIndices, /*bForceUpdateWidget=*/false);
+		TryHandlePooledEntryStateTransition(Idx);
+		UpdateEntryWidget(Idx);
 	}
 
-	// Save new set
-	LastDesiredIndices = NewDesiredIndices;
+	// (3) Rebuild the panel, forcing each widget to re-acquire or update
+	RebuildSlateForIndices(NewDesiredIndices, /*bForceUpdateWidget=*/true);
 }
 
 bool UBaseStrategyWidget::HasNewDesiredIndices(const TSet<int32>& NewIndices) const
 {
 	const bool bAreSetsIdentical = (LastDesiredIndices.Num() == NewIndices.Num()
 	   && LastDesiredIndices.Includes(NewIndices)
-	   && NewIndices.Includes(LastDesiredIndices));
+	   && NewIndices.Includes(LastDesiredIndices)
+	   && LastDesiredIndices.Num() > 0
+	   && NewIndices.Num() > 0);
 	return !bAreSetsIdentical;
 }
 

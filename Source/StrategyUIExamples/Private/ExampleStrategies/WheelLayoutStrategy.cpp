@@ -62,7 +62,7 @@ TSet<int32> UWheelLayoutStrategy::ComputeDesiredGlobalIndices()
 {
 	// Wheel layout has no concept of a "visible window" since all items are always visible
 	VisibleStartIndex = 0;
-	VisibleEndIndex = RadialSegmentCount;
+	VisibleEndIndex = RadialSegmentCount - 1;
 	
 	TSet<int32> Indices;
 	Indices.Reserve(RadialSegmentCount);
