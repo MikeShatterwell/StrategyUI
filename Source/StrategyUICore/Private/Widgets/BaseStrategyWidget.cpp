@@ -6,6 +6,8 @@
 #include <Editor/WidgetCompilerLog.h>
 #include <Modules/ModuleManager.h>
 
+#include <AsyncWidgetLoaderSubsystem.h>
+
 #include "Interfaces/IStrategyDataProvider.h"
 #include "Interfaces/IStrategyEntryBase.h"
 #include "Interfaces/IStrategyEntryWidgetProvider.h"
@@ -191,17 +193,27 @@ void UBaseStrategyWidget::Reset()
 
 		DataProvider = nullptr;
 	}
+	
+	// Cancel any pending widget loads
+	if (AsyncWidgetLoader)
+	{
+		for (const auto& Pair : GlobalIndexToRequestId)
+		{
+			if (Pair.Value != INDEX_NONE)
+			{
+				AsyncWidgetLoader->CancelRequest(Pair.Value);
+			}
+		}
+
+		AsyncWidgetLoader->ResetWidgetPools();
+	}
+	GlobalIndexToRequestId.Empty();
 
 	SelectedDataIndices.Empty();
 	FocusedGlobalIndex = 0;
 	FocusedDataIndex   = INDEX_NONE;
 	
 	GlobalIndexToSlotData.Empty();
-
-	for (TTuple<TSubclassOf<UUserWidget>, FUserWidgetPool>& Pool : WidgetPools)
-	{
-		Pool.Value.ResetPool();
-	}
 	
 	Items.Empty();
 
@@ -338,6 +350,16 @@ void UBaseStrategyWidget::NativeConstruct()
 		GlobalIndexToSlotData.Reserve(InitialCapacity);
 	}
 
+	if (const UGameInstance* GameInstance = GetGameInstance())
+	{
+		AsyncWidgetLoader = GameInstance->GetSubsystem<UAsyncWidgetLoaderSubsystem>();
+
+		if (AsyncWidgetLoader)
+		{
+			AsyncWidgetLoader->SetWidgetCreationContext(GetWorld(), GetOwningPlayer());
+		}
+	}
+
 	TryCreateDefaultDataProvider();
 
 #if WITH_GAMEPLAY_DEBUGGER
@@ -414,11 +436,234 @@ int32 UBaseStrategyWidget::NativePaint(
 #pragma endregion
 
 #pragma region UBaseStrategyWidget - Entry Widgets Pool & Handling
+
+void UBaseStrategyWidget::OnAsyncWidgetRequested_Implementation(const int32 RequestId, const TSoftClassPtr<UUserWidget>& WidgetClass)
+{
+	// Print to screen and log
+	UE_LOG(LogStrategyUI, Verbose, TEXT("%s: Requesting widget %s (RequestId: %d"), *GetName(), *WidgetClass.ToString(), RequestId);
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Blue, 
+		FString::Printf(TEXT("%s: Requesting widget %s (RequestId: %d)"), *GetName(), *WidgetClass.ToString(), RequestId)
+	);
+}
+
+void UBaseStrategyWidget::OnAsyncWidgetLoaded_Implementation(const int32 RequestId, UUserWidget* LoadedWidget)
+{
+	if (!LoadedWidget)
+	{
+		UE_LOG(LogStrategyUI, Error, TEXT("%hs: Received null widget (Request Id %d)"), __FUNCTION__, RequestId);
+		return;
+	}
+
+	// Print to screen and log
+	UE_LOG(LogStrategyUI, Verbose, TEXT("%s: Loaded widget %s"), *GetName(), *LoadedWidget->GetName());
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green,
+		FString::Printf(TEXT("%s: Loaded widget %s"), *GetName(), *LoadedWidget->GetName())
+	);
+
+	// Find which global index this request was for
+	int32 GlobalIndex = INT32_MAX;
+	for (const auto& Pair : GlobalIndexToRequestId)
+	{
+		if (Pair.Value == RequestId)
+		{
+			GlobalIndex = Pair.Key;
+			break;
+		}
+	}
+	
+	if (GlobalIndex == INT32_MAX)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("Received loaded widget for unknown request %d"), RequestId);
+		return;
+	}
+
+	// Remove the request ID from tracking
+	GlobalIndexToRequestId.Remove(GlobalIndex);
+
+	ReplacePlaceholderWithActualWidget(GlobalIndex, LoadedWidget);
+	
+	// Update slot data
+	FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindOrAdd(GlobalIndex);
+	SlotData.Widget = LoadedWidget;
+	SlotData.CachedSlateWidget = LoadedWidget->TakeWidget();
+	
+	// Setup widget state and data
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
+	const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+	
+	// Assign data to the widget
+	if (LoadedWidget->Implements<UStrategyEntryBase>() && Item)
+	{
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(LoadedWidget, Item);
+	}
+	
+	// Apply selected state if needed
+	if (SelectedDataIndices.Contains(DataIndex))
+	{
+		const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
+		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, /*bEnable=*/ true);
+	}
+	
+	// Apply focused state if needed
+	if (DataIndex == FocusedDataIndex)
+	{
+		const FGameplayTag& FocusedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
+		UpdateEntryInteractionTagState(GlobalIndex, FocusedState, /*bEnable=*/ true);
+	}
+	
+	// Update widget lifecycle to proper state
+	const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
+	const FGameplayTag DesiredTag = bShouldBeVisible
+		? StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active
+		: StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
+	
+	UpdateEntryLifecycleTagState(GlobalIndex, DesiredTag);
+	
+	// Rebuild the slate layout to include this new widget
+	RebuildSlateForIndices(
+		GetLayoutStrategyChecked().ComputeDesiredGlobalIndices(),
+		/*bForceUpdateWidget=*/false
+	);
+}
+
+void UBaseStrategyWidget::OnAsyncWidgetLoadFailed_Implementation(int32 RequestId,
+	const TSoftClassPtr<UUserWidget>& WidgetClass)
+{
+	// Print to screen and log
+	UE_LOG(LogStrategyUI, Error, TEXT("%s: Failed to load widget %s"), *GetName(), *WidgetClass.ToString());
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red,
+		FString::Printf(TEXT("%s: Failed to load widget %s"), *GetName(), *WidgetClass.ToString())
+	);
+
+	// Find which global index this request was for
+	int32 GlobalIndex = INT_MAX;
+	for (const auto& Pair : GlobalIndexToRequestId)
+	{
+		if (Pair.Value == RequestId)
+		{
+			GlobalIndex = Pair.Key;
+			break;
+		}
+	}
+
+	if (GlobalIndex == INT_MAX)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("Received failure for unknown request %d"), RequestId);
+		return;
+	}
+
+	GlobalIndexToRequestId.Remove(GlobalIndex);
+}
+
+void UBaseStrategyWidget::OnAsyncWidgetLoadCancelled_Implementation(int32 RequestId,
+	const TSoftClassPtr<UUserWidget>& WidgetClass)
+{
+	// Print to screen and log
+	UE_LOG(LogStrategyUI, Error, TEXT("%s: Load cancelled for widget %s"), *GetName(), *WidgetClass.ToString());
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red,
+		FString::Printf(TEXT("%s: Load cancelled for widget %s"), *GetName(), *WidgetClass.ToString())
+	);
+
+	// Find which global index this request was for
+	int32 GlobalIndex = INT_MAX;
+	for (const auto& Pair : GlobalIndexToRequestId)
+	{
+		if (Pair.Value == RequestId)
+		{
+			GlobalIndex = Pair.Key;
+			break;
+		}
+	}
+
+	if (GlobalIndex == INT_MAX)
+	{
+		return;
+	}
+
+	GlobalIndexToRequestId.Remove(GlobalIndex);
+}
+
+void UBaseStrategyWidget::ReplacePlaceholderWithActualWidget(const int32 GlobalIndex, UUserWidget* ActualWidget)
+{
+	FStrategyEntrySlotData* SlotData = GlobalIndexToSlotData.Find(GlobalIndex);
+	if (!SlotData)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Slot data not found for global index %d -- likely was removed while waiting for async load"), *GetName(), GlobalIndex);
+		return;
+	}
+
+	if (!SlotData->bIsPlaceholder)
+	{
+		UE_LOG(LogStrategyUI, Warning, TEXT("%s: Slot data for global index %d is not a placeholder"), *GetName(), GlobalIndex);
+		return;
+	}
+	
+	// Store old placeholder for proper cleanup
+	UUserWidget* OldPlaceholder = nullptr;
+	if (SlotData->Widget.IsValid())
+	{
+		OldPlaceholder = SlotData->Widget.Get();
+	}
+	
+	// Update the slot data with the actual widget
+	FGameplayTagContainer OldTags = SlotData->TagState;
+	SlotData->Widget = ActualWidget;
+	SlotData->CachedSlateWidget = ActualWidget->TakeWidget();
+	SlotData->bIsPlaceholder = false;
+	
+	// Setup widget state and data
+	const int32 DataIndex = GetLayoutStrategyChecked().GlobalIndexToDataIndex(GlobalIndex);
+	const UObject* Item = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
+	
+	// Assign data to the widget
+	if (ActualWidget->Implements<UStrategyEntryBase>() && Item)
+	{
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(ActualWidget, Item);
+	}
+	
+	// Notify the actual entry widget of its state
+	if (ActualWidget->Implements<UStrategyEntryBase>())
+	{
+		IStrategyEntryBase::Execute_BP_OnStrategyEntryStateTagsChanged(ActualWidget, FGameplayTagContainer(), SlotData->TagState);
+	}
+	
+	// Apply selected state if needed
+	if (SelectedDataIndices.Contains(DataIndex))
+	{
+		const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
+		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, /*bEnable=*/ true);
+	}
+	
+	// Apply focused state if needed
+	if (DataIndex == FocusedDataIndex)
+	{
+		const FGameplayTag& FocusedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Focused;
+		UpdateEntryInteractionTagState(GlobalIndex, FocusedState, /*bEnable=*/ true);
+	}
+	
+	// Clean up the old placeholder
+	if (OldPlaceholder)
+	{
+		OldPlaceholder->RemoveFromParent();
+	}
+	
+	// Rebuild the slate layout with the new widget
+	RebuildSlateForIndices(
+		GetLayoutStrategyChecked().ComputeDesiredGlobalIndices(),
+		/*bForceUpdateWidget=*/false
+	);
+}
+
 UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__);
 
 	if (!ensureAlwaysMsgf(StrategyCanvasPanel.IsValid(), TEXT("No StrategyCanvasPanel found!")))
+	{
+		return nullptr;
+	}
+
+	if (!ensureAlwaysMsgf(AsyncWidgetLoader, TEXT("No AsyncWidgetLoader found!")))
 	{
 		return nullptr;
 	}
@@ -438,6 +683,13 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 			);
 			return ExistingData->Widget.Get();
 		}
+		
+		// Check if we have a pending request
+		if (GlobalIndexToRequestId.Contains(GlobalIndex))
+		{
+			// We have a pending request - return the placeholder if it exists
+			return ExistingData->Widget.IsValid() ? ExistingData->Widget.Get() : nullptr;
+		}
 	}
 
 	// (2) Determine the data item for this index
@@ -445,14 +697,20 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	UObject* DataItem = Items.IsValidIndex(DataIndex) ? Items[DataIndex] : nullptr;
 
 	// (3) Decide which widget class to use (could come from data item, or fallback)
-	TSubclassOf<UUserWidget> DesiredClass = nullptr;
+	TSoftClassPtr<UUserWidget> DesiredClass = nullptr;
 
 	if (DataItem && DataItem->Implements<UStrategyEntryWidgetProvider>())
 	{
-		// A) Attempt to get direct class
+		// A) Attempt to get direct hard class
 		DesiredClass = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetClass(DataItem);
 
-		// B) If still none, attempt to get from a “widget tag”
+		// B) If that fails, attempt to get a soft class
+		if (!DesiredClass)
+		{
+			DesiredClass = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetSoftClass(DataItem);
+		}
+
+		// C) If still none, attempt to get hard class from a widget tag
 		if (!DesiredClass)
 		{
 			const FGameplayTag ItemTag = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetTag(DataItem);
@@ -464,9 +722,22 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 				}
 			}
 		}
+
+		// D) If still none, attempt to get soft class from the widget tag
+		if (!DesiredClass)
+		{
+			const FGameplayTag ItemTag = IStrategyEntryWidgetProvider::Execute_GetEntryWidgetTag(DataItem);
+			if (ItemTag.IsValid() && ItemTag != FGameplayTag::EmptyTag)
+			{
+				if (const TSoftClassPtr<UUserWidget> FoundClass = UStrategyUIFunctionLibrary::GetWidgetSoftClassForTag(ItemTag))
+				{
+					DesiredClass = FoundClass;
+				}
+			}
+		}
 	}
 
-	// C) If none found, fallback to default
+	// E) If none found, fallback to default
 	if (!DesiredClass)
 	{
 		if (!ensure(DefaultEntryWidgetClass))
@@ -484,58 +755,58 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 		DesiredClass = DefaultEntryWidgetClass;
 	}
 
-	// Find (or create) a pool for this widget class
-	FUserWidgetPool& Pool = WidgetPools.FindOrAdd(DesiredClass);
-	if (!Pool.IsInitialized())
+	if (!ensureAlwaysMsgf(DesiredClass.IsValid(), TEXT("DesiredClass must be valid!")))
 	{
-		if (UWorld* World = GetWorld())
-		{
-			Pool.SetWorld(World);
-		}
-		if (APlayerController* PC = GetOwningPlayer())
-		{
-			Pool.SetDefaultPlayerController(PC);
-		}
+		return nullptr;
 	}
 
-	// (4) Spawn from the pool
-	UUserWidget* NewWidget = Pool.GetOrCreateInstance(DesiredClass);
-	check(NewWidget);
-
-	UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Used GetOrCreateInstance to get widget %s for global index %d"), __FUNCTION__, *NewWidget->GetName(), GlobalIndex);
+	// Prepare slot data, even before we have the actual widget
 	FStrategyEntrySlotData& SlotData = GlobalIndexToSlotData.FindOrAdd(GlobalIndex);
-	SlotData.Widget = NewWidget;
 	SlotData.TagState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
-	if (!SlotData.CachedSlateWidget.IsValid())
+	SlotData.LastAssignedItem = DataItem;
+
+	// Create a placeholder widget if enabled
+	if (bShowLoadingPlaceholders)
 	{
-		// Only do this once for this particular UUserWidget
-		SlotData.CachedSlateWidget = NewWidget->TakeWidget();
-		UE_LOG(LogStrategyUI, VeryVerbose, TEXT("%hs: Cached Slate widget %s for UWidget %s"), __FUNCTION__, *UStrategyUIFunctionLibrary::GetFriendlySlateWidgetName(SlotData.CachedSlateWidget), *NewWidget->GetName());
+		TSubclassOf<UUserWidget> PlaceholderClass = DefaultLoadingPlaceholderClass;
+		if (!PlaceholderClass)
+		{
+			PlaceholderClass = UDefaultPlaceholderWidget::StaticClass(); // Fallback to default placeholder
+		}
+		
+		if (UUserWidget* PlaceholderWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), PlaceholderClass))
+		{
+			SlotData.Widget = PlaceholderWidget;
+			SlotData.CachedSlateWidget = PlaceholderWidget->TakeWidget();
+			SlotData.bIsPlaceholder = true; 
+
+			// Set placeholder to visible state
+			const bool bShouldBeVisible = GetLayoutStrategyChecked().ShouldBeVisible(GlobalIndex);
+			const FGameplayTag DesiredTag = bShouldBeVisible
+				? StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active
+				: StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Deactivated;
+
+			UpdateEntryLifecycleTagState(GlobalIndex, DesiredTag);
+		}
 	}
 
-	if (NewWidget->Implements<UStrategyEntryBase>())
+	// Request async widget loading
+	const int32 RequestId = AsyncWidgetLoader->RequestWidgetAsync(
+		DesiredClass,
+		this,
+		FOnAsyncWidgetLoadedDynamic(), // No callback since we're implementing the IAsyncWidgetRequestHandler interface and will handle it in OnAsyncWidgetLoaded_Implementation
+		1.0f  // Default priority
+	);
+
+	if (RequestId == INDEX_NONE)
 	{
-		NotifyStrategyEntryStateChange(
-			GlobalIndex, NewWidget, FGameplayTagContainer(), FGameplayTagContainer(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled)
-		);
+		UE_LOG(LogStrategyUI, Error, TEXT("Failed to request widget for global index %d"), GlobalIndex);
+		return nullptr;
 	}
 
-	// If this data index is already in our "selected" set, update the widget
-	if (SelectedDataIndices.Contains(DataIndex))
-	{
-		const FGameplayTag& SelectedState = StrategyUIGameplayTags::StrategyUI::EntryInteraction::Selected;
-		UpdateEntryInteractionTagState(GlobalIndex, SelectedState, /*bEnable=*/ true);
-	}
+	GlobalIndexToRequestId.Add(GlobalIndex, RequestId);
 
-	// Assign data to the widget
-	const bool bHasDataChanged = SlotData.LastAssignedItem != DataItem;
-	if (Items.IsValidIndex(DataIndex) && NewWidget->Implements<UStrategyEntryBase>() && bHasDataChanged)
-	{
-		IStrategyEntryBase::Execute_BP_OnStrategyEntryItemAssigned(NewWidget, Items[DataIndex]);
-		SlotData.LastAssignedItem = DataItem;
-	}
-
-	return NewWidget;
+	return SlotData.Widget.Get(); // Return the placeholder or nullptr
 }
 
 void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
@@ -547,23 +818,37 @@ void UBaseStrategyWidget::ReleaseEntryWidget(const int32 GlobalIndex)
 		return;
 	}
 
+	// Check for pending requests
+	if (const int32* RequestId = GlobalIndexToRequestId.Find(GlobalIndex))
+	{
+		if (*RequestId != INDEX_NONE && AsyncWidgetLoader)
+		{
+			// Cancel the pending request
+			AsyncWidgetLoader->CancelRequest(*RequestId);
+			GlobalIndexToRequestId.Remove(GlobalIndex);
+		}
+	}
+
 	if (FStrategyEntrySlotData* SlotData = GlobalIndexToSlotData.Find(GlobalIndex))
 	{
 		if (SlotData->IsValid())
 		{
 			if (UUserWidget* Widget = SlotData->Widget.Get())
 			{
-				const TSubclassOf<UUserWidget> Class = Widget->GetClass();
-				if (FUserWidgetPool* Pool = WidgetPools.Find(Class))
+				if (SlotData->bIsPlaceholder)
 				{
-					Pool->Release(Widget);
-					UE_LOG(LogStrategyUI, Verbose, TEXT("%hs: Released widget %s for global index %d"), __FUNCTION__, *Widget->GetName(), GlobalIndex);
+					// Just remove the placeholder, don't return it to pool
+					Widget->RemoveFromParent();
+				}
+				else if (AsyncWidgetLoader)
+				{
+					AsyncWidgetLoader->ReleaseWidgetToPool(Widget);
 				}
 				
 				// Transition it back to "Pooled" in IndexToTagStateMap
 				if (GlobalIndexToSlotData.Contains(GlobalIndex))
 				{
-					FGameplayTagContainer OldState = SlotData->TagState;
+					const FGameplayTagContainer OldState = SlotData->TagState;
 					FGameplayTagContainer PooledState;
 					PooledState.AddTag(StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Pooled);
 

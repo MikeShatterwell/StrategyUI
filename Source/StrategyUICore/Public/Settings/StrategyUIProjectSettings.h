@@ -33,6 +33,13 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category="StrategyUI|WidgetMapping")
 	TMap<FGameplayTag, TSubclassOf<UUserWidget>> TagToWidgetClassMap;
 
+	/**
+	 * Maps a specific "key" tag to a soft widget class (e.g. "StrategyUI.WorldMarker.Friendly" -> W_FriendlyMarkerEntry)
+	 * that the base widget will async load.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category="StrategyUI|WidgetMapping")
+	TMap<FGameplayTag, TSoftClassPtr<UUserWidget>> TagToWidgetSoftClassMap;
+
 	virtual FName GetCategoryName() const override
 	{
 		return FName(TEXT("Plugins"));

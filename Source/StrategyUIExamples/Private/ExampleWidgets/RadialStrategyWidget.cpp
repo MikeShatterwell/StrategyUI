@@ -565,7 +565,7 @@ void URadialStrategyWidget::SyncMaterialData(const int32 InGlobalIndex)
 
 	const FGameplayTagContainer& ItemState = SlotData.TagState;
 
-	if (Widget->Implements<URadialItemEntry>())
+	if (Widget && Widget->Implements<URadialItemEntry>())
 	{
 		const FGameplayTag& ActiveState = StrategyUIGameplayTags::StrategyUI::EntryLifecycle::Active;
 		if (ItemState.HasTag(ActiveState))

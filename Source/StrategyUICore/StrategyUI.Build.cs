@@ -26,6 +26,7 @@ public class StrategyUI : ModuleRules
 			new string[]
 			{
 				"Core",
+				"Slate",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -42,7 +43,8 @@ public class StrategyUI : ModuleRules
 				"GameplayTags",
 				"DeveloperSettings",
 				"GameplayDebugger",
-				"InputCore"
+				"InputCore",
+				"AsyncWidgetLoader",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

@@ -60,6 +60,26 @@ public:
 		bool bLogWarnings = true
 	);
 
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Settings")
+	static TSoftClassPtr<UUserWidget> GetWidgetSoftClassForTag(
+		const FGameplayTag& InTag,
+		bool bLogWarnings = true
+	);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Settings")
+	static bool TryGetWidgetSoftClassForTag(
+		const FGameplayTag& InTag,
+		TSoftClassPtr<UUserWidget>& OutClass,
+		bool bLogWarnings = true
+	);
+
+	UFUNCTION(BlueprintCallable, Category="StrategyUI|Settings")
+	static TSoftClassPtr<UUserWidget> GetWidgetSoftClassForTagWithFallback(
+		const FGameplayTag& InTag,
+		const TSoftClassPtr<UUserWidget> FallbackClass,
+		bool bLogWarnings = true
+	);
+
 	static FString GetFriendlySlateWidgetName(const TSharedPtr<SWidget>& InWidget)
 	{
 		if (!InWidget.IsValid())

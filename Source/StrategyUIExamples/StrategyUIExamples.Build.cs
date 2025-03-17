@@ -26,7 +26,8 @@ public class StrategyUIExamples : ModuleRules
 				"GameplayTags",
 				"DeveloperSettings",
 				"GameplayDebugger",
-				"InputCore"
+				"InputCore",
+				"AsyncWidgetLoader",
 			}
 		);
 	}

@@ -35,11 +35,20 @@ public:
 	 * Return the class of the widget that should be created to represent this data item.
 	 * 
 	 * This is the highest priority method for determining the widget class.
+	 * If this method returns nullptr, the soft class will be considered next.
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyWidgetClassProvider")
+	TSubclassOf<UUserWidget> GetEntryWidgetClass() const;
+
+	/**
+	 * Return a soft class of the widget that should be created to represent this data item.
+	 * 
+	 * This is the second-highest priority method for determining the widget class.
 	 * If this method returns nullptr, the widget tag will be used to look up a class in the StrategyUI project settings.
 	 * If no class is found there, the BaseStrategyWidget's default entry widget class will be used.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="StrategyUI|StrategyWidgetClassProvider")
-	TSubclassOf<UUserWidget> GetEntryWidgetClass() const;
+	TSoftClassPtr<UUserWidget> GetEntryWidgetSoftClass() const;
 
 	/**
 	 * Return the tag of the widget that should be created to represent this data item.

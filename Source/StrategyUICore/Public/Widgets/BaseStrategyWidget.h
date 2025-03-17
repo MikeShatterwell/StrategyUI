@@ -6,10 +6,14 @@
 #include <Blueprint/UserWidgetPool.h>
 #include <GameplayTagContainer.h>
 
+#include <Interfaces/IAsyncWidgetRequestHandler.h>
+
+#include "DefaultPlaceholderWidget.h"
 #include "Interfaces/ILayoutStrategyHost.h"
 
 #include "BaseStrategyWidget.generated.h"
 
+class UAsyncWidgetLoaderSubsystem;
 class UBaseLayoutStrategy;
 class UUserWidget;
 class IStrategyDataProvider;
@@ -32,6 +36,7 @@ public:
 		Position = Other.Position;
 		Depth = Other.Depth;
 		LastAssignedItem = Other.LastAssignedItem;
+		bIsPlaceholder = Other.bIsPlaceholder;
 		return *this;
 	}
 	
@@ -52,18 +57,23 @@ public:
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
 	float Depth = 0.f;
 
+	// Whether this slot is a placeholder (e.g. for async loading)
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
+	bool bIsPlaceholder = false;
+
 	// The last assigned data item, for detecting changes
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "StrategyUI|BaseStrategyWidget")
 	TWeakObjectPtr<UObject> LastAssignedItem = nullptr;
 
 	virtual FString ToString() const
 	{
-		return FString::Printf(TEXT("\n\t\tWidget: %s, \n\t\tTagState: %s, \n\t\tPosition: %s, \n\t\tDepth: %f, \n\t\tLastItem: %s"),
+		return FString::Printf(TEXT("\n\t\tWidget: %s, \n\t\tTagState: %s, \n\t\tPosition: %s, \n\t\tDepth: %f, \n\t\tLastItem: %s, \n\t\tPlaceholder: %s"),
 			Widget.IsValid() ? *Widget->GetName() : TEXT("None"),
 			*TagState.ToString(),
 			*Position.ToString(),
 			Depth,
-			LastAssignedItem.IsValid() ? *LastAssignedItem->GetName() : TEXT("None"));
+			LastAssignedItem.IsValid() ? *LastAssignedItem->GetName() : TEXT("None"),
+			bIsPlaceholder ? TEXT("True") : TEXT("False"));
 	}
 
 	virtual void Reset()
@@ -74,6 +84,7 @@ public:
 		Position = FVector2D::ZeroVector;
 		Depth = 0.f;
 		LastAssignedItem.Reset();
+		bIsPlaceholder = false;
 	}
 
 	virtual bool operator==(const FStrategyEntrySlotData& Other) const
@@ -82,7 +93,8 @@ public:
 			&& TagState == Other.TagState
 			&& Position == Other.Position
 			&& FMath::IsNearlyEqual(Depth, Other.Depth)
-			&& LastAssignedItem == Other.LastAssignedItem;
+			&& LastAssignedItem == Other.LastAssignedItem
+			&& bIsPlaceholder == Other.bIsPlaceholder;
 	}
 
 	virtual bool IsValid() const
@@ -126,7 +138,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FStrategyItemSelectedDelegate, int3
  * Subclasses can override or extend input handling, item events, etc.
  */
 UCLASS(Abstract, Blueprintable, ClassGroup="StrategyUI")
-class STRATEGYUI_API UBaseStrategyWidget : public UUserWidget, public ILayoutStrategyHost
+class STRATEGYUI_API UBaseStrategyWidget : public UUserWidget, public ILayoutStrategyHost, public IAsyncWidgetRequestHandler
 {
 	GENERATED_BODY()
 
@@ -205,6 +217,17 @@ protected:
 	/** Custom entry widget class (must implement IStrategyEntryBase). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget")
 	TSubclassOf<UUserWidget> DefaultEntryWidgetClass = nullptr;
+
+	/** 
+	 * Optional placeholder widget class (must implement IStrategyEntryBase).
+	 * Used when the entry widget is not available or in progress async loading.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget|AsyncLoading")
+	TSubclassOf<UUserWidget> DefaultLoadingPlaceholderClass = UDefaultPlaceholderWidget::StaticClass();
+	
+	// Whether to show loading placeholders while widgets load asynchronously
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget|AsyncLoading")
+	bool bShowLoadingPlaceholders = true;
 	
 	/**
 	 * Optional data provider. If set, the widget will automatically fetch
@@ -235,6 +258,23 @@ protected:
 
 #pragma region ILayoutStrategyHost Interface
 	virtual int32 GetNumItems_Implementation() const override { return GetItemCount(); }
+#pragma endregion
+
+#pragma region IAsyncWidgetRequestHandler Interface
+	virtual void OnAsyncWidgetRequested_Implementation(int32 RequestId, const TSoftClassPtr<UUserWidget>& WidgetClass) override;
+	virtual void OnAsyncWidgetLoaded_Implementation(int32 RequestId, UUserWidget* LoadedWidget) override;
+	virtual void OnAsyncWidgetLoadFailed_Implementation(int32 RequestId, const TSoftClassPtr<UUserWidget>& WidgetClass) override;
+	virtual void OnAsyncWidgetLoadCancelled_Implementation(int32 RequestId, const TSoftClassPtr<UUserWidget>& WidgetClass) override;
+
+	// AsyncWidgetLoader subsystem reference
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget|AsyncWidgetLoader")
+	TObjectPtr<UAsyncWidgetLoaderSubsystem> AsyncWidgetLoader = nullptr;
+
+	// Map to track pending widget load requests (GlobalIndex -> RequestId)
+	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|BaseStrategyWidget|AsyncWidgetLoader")
+	TMap<int32, int32> GlobalIndexToRequestId;
+
+	void ReplacePlaceholderWithActualWidget(int32 GlobalIndex, UUserWidget* ActualWidget);
 #pragma endregion
 
 #pragma region UBaseStrategyWidget Functions - Entry Widgets Pool & Handling
@@ -373,7 +413,7 @@ protected:
 	 * Raw global "cursor" or "focus" index, can be outside the array range.
 	 */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|Selection")
-	int32 FocusedGlobalIndex = INDEX_NONE;
+	int32 FocusedGlobalIndex = 0.;
 
 	/** Focused index clamped to the array, or INDEX_NONE if invalid. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="StrategyUI|Selection")
