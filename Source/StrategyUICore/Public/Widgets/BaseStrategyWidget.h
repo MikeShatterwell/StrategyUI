@@ -286,6 +286,9 @@ protected:
 		check(StrategyType);
 		return *StrategyType;
 	}
+
+	/** Gets the best entry widget class for the item at GlobalIndex. */
+	TSoftClassPtr<UUserWidget> ResolveEntryWidgetClass(int32 GlobalIndex);
 	
 	/** Create (or retrieve from a pool) a widget for the item at GlobalIndex. */
 	virtual UUserWidget* AcquireEntryWidget(int32 GlobalIndex);

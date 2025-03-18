@@ -12,6 +12,11 @@ namespace StrategyUIGameplayTags
 				Parent,
 				"StrategyUI.EntryLifecycle",
 				"Used to refer to the StrategyUI.EntryState parent tag.");
+
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(
+				Loading,
+				"StrategyUI.EntryLifecycle.Loading",
+				"Entry is loading and likely showing a placeholder widget. Mutually exclusive with other StrategyUI.EntryLifecycle.* tags.");
 	
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(
 				Pooled,

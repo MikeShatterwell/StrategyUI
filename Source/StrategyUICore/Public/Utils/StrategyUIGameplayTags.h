@@ -13,6 +13,7 @@ namespace StrategyUIGameplayTags
 		namespace EntryLifecycle
 		{
 			TAG(Parent);
+			TAG(Loading);
 			TAG(Pooled);
 			TAG(Deactivated);
 			TAG(Active);
