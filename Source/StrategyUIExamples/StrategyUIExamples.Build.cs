@@ -11,7 +11,6 @@ public class StrategyUIExamples : ModuleRules
 			{
 				"Core", 
 				"StrategyUI",
-				"StrategyUIExamples"
 			}
 		);
 

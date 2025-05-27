@@ -8,7 +8,6 @@
 
 #include <Interfaces/IAsyncWidgetRequestHandler.h>
 
-#include "DefaultPlaceholderWidget.h"
 #include "Interfaces/ILayoutStrategyHost.h"
 
 #include "BaseStrategyWidget.generated.h"
@@ -223,7 +222,7 @@ protected:
 	 * Used when the entry widget is not available or in progress async loading.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget|AsyncLoading")
-	TSubclassOf<UUserWidget> DefaultLoadingPlaceholderClass = UDefaultPlaceholderWidget::StaticClass();
+	TSubclassOf<UUserWidget> DefaultLoadingPlaceholderClass = nullptr;
 	
 	// Whether to show loading placeholders while widgets load asynchronously
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="StrategyUI|BaseStrategyWidget|AsyncLoading")

@@ -762,12 +762,7 @@ UUserWidget* UBaseStrategyWidget::AcquireEntryWidget(const int32 GlobalIndex)
 	// Create a placeholder widget if enabled
 	if (bShowLoadingPlaceholders)
 	{
-		TSubclassOf<UUserWidget> PlaceholderClass = DefaultLoadingPlaceholderClass;
-		if (!PlaceholderClass)
-		{
-			PlaceholderClass = UDefaultPlaceholderWidget::StaticClass(); // Fallback to default placeholder
-		}
-
+		const TSubclassOf<UUserWidget> PlaceholderClass = DefaultLoadingPlaceholderClass;
 		if (UUserWidget* PlaceholderWidget = AsyncWidgetLoader->GetOrCreatePooledWidget(PlaceholderClass))
 		{
 			SlotData.Widget = PlaceholderWidget;
