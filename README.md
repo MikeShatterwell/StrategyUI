@@ -14,6 +14,9 @@ Things that should be possible with StrategyUI
 - Minimap displays
 - Tooltips and context menus 
   - Bonus points for timed sticky tooltips that will freeze and allow interaction on the new tooltip
+ 
+
+This whole system is a bit unhinged, to be honest. Have fun poking around!
 
 
 ## License
