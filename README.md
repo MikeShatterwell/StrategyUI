@@ -2,6 +2,8 @@
 
 StrategyUI is a flexible, extensible, open-source UI plugin designed to be used for creating widgets with procedural layouts.
 
+REQUIRES https://github.com/MikeShatterwell/AsyncWidgetLoader
+
 Examples of such widgets include:
 - Radial menus
 - Infinitely scrolling spiral item lists
